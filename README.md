@@ -55,3 +55,15 @@ print(list_datasets_with_videos())
 for frame in iter_frames("aau-zebrafish-reid", "vid1"):
     print(frame.image_path, len(frame.annotations))
 ```
+
+## CLI / GUI (Gooey)
+Run `python scripts/fish_cli.py` to open the GUI or use it as a CLI.
+CUDA GPU is required; the app fails fast if no GPU is available.
+
+Modes:
+- `train`: dataset folder -> output weights `.pt` (saves best + last)
+- `run`: frames folder -> output tracks `.csv` (uses `models/latest.pt`)
+- `validate`: dataset folder -> output metrics `.json` (uses `models/latest.pt`)
+
+If training appears stuck, run from the terminal (not the Gooey window) to see live logs.
+Train/validate default to `data/interim/aau-zebrafish-reid` if no dataset path is provided.

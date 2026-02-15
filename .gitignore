@@ -16,3 +16,8 @@ kaggle.json
 __pycache__/
 *.pyc
 .venv/
+
+# Training artifacts
+models/
+outputs/
+yolo*.pt
