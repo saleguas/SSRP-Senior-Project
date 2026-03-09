@@ -6,6 +6,7 @@ Dataset registry and lightweight loaders for the project data layout.
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -78,11 +79,8 @@ def _parse_flags(value: str) -> Tuple[int, int, int, int]:
 
 
 def _parse_frame_index(filename: str) -> Optional[int]:
-    if "_" not in filename:
-        return None
-    suffix = filename.split("_", 1)[1]
-    number = suffix.split(".", 1)[0]
-    return int(number) if number.isdigit() else None
+    match = re.search(r"(\d+)(?=\.[^.]+$)", filename)
+    return int(match.group(1)) if match else None
 
 
 @lru_cache(maxsize=8)

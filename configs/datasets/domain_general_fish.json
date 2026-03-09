@@ -1,0 +1,14 @@
+{
+  "name": "domain-general-fish",
+  "single_class_name": "fish",
+  "sources": [
+    {
+      "name": "aau-zebrafish-reid",
+      "path": "../../data/interim/aau-zebrafish-reid"
+    },
+    {
+      "name": "mit-sea-grant-river-herring",
+      "path": "../../data/interim/mit-sea-grant-river-herring"
+    }
+  ]
+}

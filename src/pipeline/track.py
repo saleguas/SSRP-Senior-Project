@@ -1,14 +1,16 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
+import math
+import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import cv2
 from ultralytics import YOLO
 
-from .utils import require_cuda
+from .utils import repo_root, require_cuda
 
 
 def _ensure_pngs(folder: Path) -> List[Path]:
@@ -26,6 +28,66 @@ def _color_for_id(track_id: int) -> Tuple[int, int, int]:
     )
 
 
+def _tracker_name() -> str:
+    env_value = os.environ.get("FISH_TRACKER")
+    if env_value:
+        return env_value
+    custom = repo_root() / "configs" / "trackers" / "botsort_fish.yaml"
+    if custom.exists():
+        return str(custom)
+    return "botsort.yaml"
+
+
+def _jump_threshold(frame_w: int, frame_h: int, bbox_w: float, bbox_h: float) -> float:
+    env_value = os.environ.get("FISH_MAX_JUMP_PX")
+    if env_value:
+        try:
+            return max(0.0, float(env_value))
+        except ValueError:
+            pass
+    if bbox_w > 0 and bbox_h > 0:
+        return max(30.0, 2.0 * max(bbox_w, bbox_h))
+    diag = math.hypot(frame_w, frame_h)
+    return max(30.0, 0.1 * diag)
+
+def _assign_display_id(
+    raw_id: int,
+    center: Tuple[float, float],
+    bbox_w: float,
+    bbox_h: float,
+    frame_w: int,
+    frame_h: int,
+    display_map: Dict[int, int],
+    last_center: Dict[int, Tuple[float, float]],
+    next_display_id: List[int],
+) -> int:
+    if raw_id < 0:
+        display_id = next_display_id[0]
+        next_display_id[0] += 1
+        last_center[display_id] = center
+        return display_id
+
+    display_id = display_map.get(raw_id)
+    if display_id is None:
+        display_id = next_display_id[0]
+        next_display_id[0] += 1
+        display_map[raw_id] = display_id
+        last_center[display_id] = center
+        return display_id
+
+    threshold = _jump_threshold(frame_w, frame_h, bbox_w, bbox_h)
+    if threshold > 0:
+        prev = last_center.get(display_id)
+        if prev is not None:
+            dist = math.hypot(center[0] - prev[0], center[1] - prev[1])
+            if dist > threshold:
+                display_id = next_display_id[0]
+                next_display_id[0] += 1
+                display_map[raw_id] = display_id
+
+    last_center[display_id] = center
+    return display_id
+
 def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None:
     require_cuda()
 
@@ -39,12 +101,16 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
         )
 
     model = YOLO(str(weights_path))
+    tracker_name = _tracker_name()
+    display_map: Dict[int, int] = {}
+    last_center: Dict[int, Tuple[float, float]] = {}
+    next_display_id = [1]
 
     results = model.track(
         source=[str(p) for p in image_paths],
         stream=True,
         persist=True,
-        tracker="bytetrack.yaml",
+        tracker=tracker_name,
         conf=0.25,
         iou=0.5,
         device=0,
@@ -75,6 +141,11 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
             if boxes is None or len(boxes) == 0:
                 continue
 
+            frame = result.orig_img
+            if frame is None:
+                frame = cv2.imread(str(result.path))
+            frame_h, frame_w = frame.shape[:2] if frame is not None else (0, 0)
+
             xyxy = boxes.xyxy.cpu().tolist()
             conf = boxes.conf.cpu().tolist() if boxes.conf is not None else [None] * len(xyxy)
             ids = boxes.id.cpu().tolist() if boxes.id is not None else [-1] * len(xyxy)
@@ -85,10 +156,21 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
                 yc = (y1 + y2) / 2.0
                 w = x2 - x1
                 h = y2 - y1
+                display_id = _assign_display_id(
+                    int(track_id),
+                    (xc, yc),
+                    w,
+                    h,
+                    frame_w,
+                    frame_h,
+                    display_map,
+                    last_center,
+                    next_display_id,
+                )
                 writer.writerow(
                     [
                         frame_name,
-                        int(track_id),
+                        int(display_id),
                         int(x1),
                         int(y1),
                         int(x2),
@@ -100,8 +182,6 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
                         float(f"{score:.4f}") if score is not None else "",
                     ]
                 )
-
-
 def visualize_folder(
     images_dir: Path,
     output_video: Path,
@@ -120,28 +200,36 @@ def visualize_folder(
         )
 
     model = YOLO(str(weights_path))
+    tracker_name = _tracker_name()
+    display_map: Dict[int, int] = {}
+    last_center: Dict[int, Tuple[float, float]] = {}
+    next_display_id = [1]
     total_frames = len(image_paths)
     print(f"Visualize: {total_frames} frames -> {output_video}", flush=True)
 
     output_video.parent.mkdir(parents=True, exist_ok=True)
     frames_dir = output_video.with_suffix("")
     frames_dir = frames_dir.parent / f"{frames_dir.name}_frames"
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir, ignore_errors=True)
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     saved_frames: List[Path] = []
+    tracker_initialized = False
     for idx, image_path in enumerate(image_paths, start=1):
         frame_output = frames_dir / image_path.name
-        if frame_output.exists():
-            saved_frames.append(frame_output)
-            continue
-
-        results = model.predict(
-            source=str(image_path),
-            conf=0.25,
-            iou=0.5,
-            device=0,
-            verbose=False,
-        )
+        track_args = {
+            "source": str(image_path),
+            "persist": True,
+            "conf": 0.25,
+            "iou": 0.5,
+            "device": 0,
+            "verbose": False,
+        }
+        if not tracker_initialized:
+            track_args["tracker"] = tracker_name
+            tracker_initialized = True
+        results = model.track(**track_args)
         if not results:
             continue
 
@@ -153,16 +241,33 @@ def visualize_folder(
             continue
 
         frame = frame.copy()
+        frame_h, frame_w = frame.shape[:2]
         boxes = result.boxes
         if boxes is not None and len(boxes) > 0:
             xyxy = boxes.xyxy.cpu().tolist()
             conf = boxes.conf.cpu().tolist() if boxes.conf is not None else [None] * len(xyxy)
-            for det_idx, ((x1, y1, x2, y2), score) in enumerate(zip(xyxy, conf), start=1):
-                color = _color_for_id(det_idx)
+            ids = boxes.id.cpu().tolist() if boxes.id is not None else [-1] * len(xyxy)
+            for (x1, y1, x2, y2), score, track_id in zip(xyxy, conf, ids):
                 x1_i, y1_i, x2_i, y2_i = map(int, (x1, y1, x2, y2))
+                xc = (x1 + x2) / 2.0
+                yc = (y1 + y2) / 2.0
+                w = x2 - x1
+                h = y2 - y1
+                display_id = _assign_display_id(
+                    int(track_id),
+                    (xc, yc),
+                    w,
+                    h,
+                    frame_w,
+                    frame_h,
+                    display_map,
+                    last_center,
+                    next_display_id,
+                )
+                color = _color_for_id(display_id)
                 cv2.rectangle(frame, (x1_i, y1_i), (x2_i, y2_i), color, 2)
 
-                label = f"ID {det_idx}"
+                label = f"ID {display_id}"
                 if score is not None:
                     label = f"{label} {score:.2f}"
                 (text_w, text_h), baseline = cv2.getTextSize(
@@ -221,3 +326,9 @@ def visualize_folder(
 
     writer.release()
     shutil.rmtree(frames_dir, ignore_errors=True)
+
+
+
+
+
+

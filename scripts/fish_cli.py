@@ -117,7 +117,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_arg(
         train_parser,
         "data",
-        help="Dataset folder (contains annotations.csv and video folders)",
+        help="Normalized dataset folder, processed YOLO dataset root, or JSON dataset manifest",
         widget="DirChooser",
         nargs="?",
         default=str(default_dataset),
@@ -144,6 +144,13 @@ def _build_parser() -> argparse.ArgumentParser:
         widget="FileSaver",
         default=str(repo_root() / "outputs" / "tracks.csv"),
     )
+    _add_arg(
+        run_parser,
+        "--weights",
+        help="Optional weights file to use instead of the default resolver",
+        widget="FileChooser",
+        default="",
+    )
 
     visualize_parser = subparsers.add_parser(
         "visualize", help="Write annotated tracking video"
@@ -163,12 +170,19 @@ def _build_parser() -> argparse.ArgumentParser:
         widget="FileSaver",
         default=str(repo_root() / "outputs" / "visualization.mp4"),
     )
+    _add_arg(
+        visualize_parser,
+        "--weights",
+        help="Optional weights file to use instead of the default resolver",
+        widget="FileChooser",
+        default="",
+    )
 
     validate_parser = subparsers.add_parser("validate", help="Validate detector")
     _add_arg(
         validate_parser,
         "data",
-        help="Dataset folder (contains annotations.csv and video folders)",
+        help="Normalized dataset folder, processed YOLO dataset root, or JSON dataset manifest",
         widget="DirChooser",
         nargs="?",
         default=str(default_dataset),
@@ -179,6 +193,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output metrics JSON",
         widget="FileSaver",
         default=str(repo_root() / "outputs" / "metrics.json"),
+    )
+    _add_arg(
+        validate_parser,
+        "--weights",
+        help="Optional weights file to use instead of the default resolver",
+        widget="FileChooser",
+        default="",
     )
 
     return parser
@@ -199,7 +220,7 @@ def _run() -> int:
     if args.command == "run":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".csv")
-        weights_path = _resolve_weights()
+        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
         track_folder(data_root, output_path, weights_path)
         print(f"Wrote tracks: {output_path}")
         return 0
@@ -207,7 +228,7 @@ def _run() -> int:
     if args.command == "visualize":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
-        weights_path = _resolve_weights()
+        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
         visualize_folder(data_root, output_path, weights_path)
         print(f"Wrote video: {output_path}")
         return 0
@@ -215,7 +236,7 @@ def _run() -> int:
     if args.command == "validate":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".json")
-        weights_path = _resolve_weights()
+        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
         validate_detector(data_root, weights_path, output_path)
         print(f"Wrote metrics: {output_path}")
         return 0
@@ -227,13 +248,16 @@ def _run() -> int:
 if Gooey:
 
     @Gooey(program_name="Fish Tracking", default_size=(820, 620))
-    def main() -> None:
+    def _gooey_main() -> None:
         raise SystemExit(_run())
 
-else:
 
-    def main() -> None:
-        raise SystemExit(_run())
+def main() -> None:
+    # Keep the GUI for no-arg launches, but let real CLI invocations behave like a CLI.
+    if Gooey and len(sys.argv) == 1:
+        _gooey_main()
+        return
+    raise SystemExit(_run())
 
 
 if __name__ == "__main__":

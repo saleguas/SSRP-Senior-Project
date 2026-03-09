@@ -9,6 +9,13 @@ detectors and multi-object tracking methods, and extracts 2D trajectories.
 - `data/raw/aau-zebrafish-reid/aau-zebrafish-reid.zip`: original zip
 - `data/raw/aau-zebrafish-reid/annotations.csv`: raw annotations after unzip
 - `data/raw/aau-zebrafish-reid/data/`: raw frames after unzip
+- `data/raw/mit-sea-grant-river-herring/`: raw LILA river herring downloads
+- `data/raw/mit-sea-grant-river-herring/mit_river_herring.zip`: original image zip
+- `data/raw/mit-sea-grant-river-herring/mit_sea_grant_river_herring.json.zip`: COCO metadata zip
+- `data/raw/deep-vision-fish/`: raw Deep Vision fish dataset download
+- `data/raw/deep-vision-fish/fishDatasetSimulationAlgorithm.zip`: original zip
+- `data/raw/kakadu-fishai/`: raw Zenodo Kakadu FishAI download
+- `data/raw/kakadu-fishai/202210-KakaduFishAI-TrainingData.zip`: original training zip
 - `data/interim/`: normalized, consistent layout used by code
 - `data/interim/aau-zebrafish-reid/`: normalized dataset root
 - `data/interim/aau-zebrafish-reid/annotations.csv`: annotations for all frames
@@ -22,6 +29,7 @@ detectors and multi-object tracking methods, and extracts 2D trajectories.
 
 ## Data: AAU Zebrafish Re-Identification (Kaggle)
 Dataset slug: `aalborguniversity/aau-zebrafish-reid`
+Dataset page: [AAU Zebrafish ReID (Kaggle)](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid)
 
 ### Kaggle API Setup
 - Place `kaggle.json` in `%USERPROFILE%\\.kaggle\\` (Windows) or `~/.kaggle/`
@@ -45,6 +53,76 @@ Expected normalized layout:
 - `data/interim/aau-zebrafish-reid/annotations.csv`
 - `data/interim/aau-zebrafish-reid/vid1/*.png`
 - `data/interim/aau-zebrafish-reid/vid2/*.png`
+
+## Data: MIT Sea Grant River Herring (LILA)
+Dataset page: [MIT Sea Grant River Herring (LILA)](https://lila.science/datasets/mit-sea-grant-river-herring/)
+
+Current status: raw download and normalization into `data/interim/` are supported.
+
+Download the image zip and COCO metadata zip to `data/raw/mit-sea-grant-river-herring/`:
+```bash
+python scripts/download_mit_river_herring.py
+```
+
+Download only the metadata zip:
+```bash
+python scripts/download_mit_river_herring.py --metadata-only
+```
+
+Normalize the raw zip into the repo's interim layout:
+```bash
+python scripts/organize_mit_river_herring.py
+```
+
+Build a smaller development subset first:
+```bash
+python scripts/organize_mit_river_herring.py --location coonamessett --max-clips 5 --dest data/interim/mit-sea-grant-river-herring-sample
+```
+
+## Data: Deep Vision Fish Dataset
+Dataset page: [Deep Vision fish dataset (NMDC)](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3)
+Direct zip: [fishDatasetSimulationAlgorithm.zip](https://ftp.nmdc.no/nmdc/IMR/MachineLearning/fishDatasetSimulationAlgorithm.zip)
+
+Current status: raw download is supported; normalization is not wired into the repo yet.
+
+Download the published zip to `data/raw/deep-vision-fish/`:
+```bash
+python scripts/download_deep_vision_fish.py
+```
+
+## Data: Kakadu FishAI Training Data
+Dataset page: [A deep learning dataset for underwater object detection of tropical freshwater fish species in northern Australia (Zenodo)](https://zenodo.org/records/7250921)
+Direct zip: [202210-KakaduFishAI-TrainingData.zip](https://zenodo.org/records/7250921/files/202210-KakaduFishAI-TrainingData.zip?download=1)
+
+Current status: raw download is supported; normalization is not wired into the repo yet.
+
+Download the training zip to `data/raw/kakadu-fishai/`:
+```bash
+python scripts/download_kakadu_fishai.py
+```
+
+## Domain-General Fish Detector
+Current goal: train one detector that generalizes across multiple fish-video domains.
+
+Current manifest:
+- `configs/datasets/domain_general_fish.json`
+- sources included now: `aau-zebrafish-reid` + `mit-sea-grant-river-herring`
+
+Datasets currently in the project:
+- active training sources: [AAU Zebrafish ReID (Kaggle)](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid), [MIT Sea Grant River Herring (LILA)](https://lila.science/datasets/mit-sea-grant-river-herring/)
+- downloaded next sources to integrate: [Deep Vision fish dataset (NMDC)](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3), [Kakadu FishAI training data (Zenodo)](https://zenodo.org/records/7250921)
+
+Train the combined one-class fish detector:
+```bash
+python scripts/fish_cli.py train configs/datasets/domain_general_fish.json models/domain_general_fish.pt
+```
+
+The combined YOLO dataset is built automatically at:
+- `data/processed/domain-general-fish-yolo/`
+
+Candidate future sources:
+- curated repo: https://github.com/filippovarini/fish-datasets
+- prioritize adding footage that expands camera/domain coverage, especially aquarium/tank footage if the deployment target is home or lab fish tanks
 
 ## Data Access (Python)
 Use `src/data_registry.py` to list datasets and iterate frames with boxes:
