@@ -8,7 +8,7 @@ consistent IDs over time. No 3D or pose.
 ## Stack
 - Python, PyTorch, Ultralytics YOLO
 - OpenCV for visualization
-- Gooey for GUI (optional)
+- Pure `argparse` CLI
 - CUDA GPU required for train/track/visualize
 
 ## Data Layout (normalized)
@@ -22,6 +22,14 @@ consistent IDs over time. No 3D or pose.
 - `mit_sea_grant_river_herring.json.zip`: COCO metadata zip from LILA
 - `metadata/mit_sea_grant_river_herring.json`: extracted COCO metadata JSON
 
+`data/raw/deep-vision-fish/`
+- `fishDatasetSimulationAlgorithm.zip`: Deep Vision archive from NMDC
+- `unzipped/fish_dataset/`: extracted source images + CSV annotations
+
+`data/raw/kakadu-fishai/`
+- `202210-KakaduFishAI-TrainingData.zip`: Zenodo archive
+- `unzipped/`: extracted images + `KakaduFishAI_boundingbox.json`
+
 ## Data Layout (normalized via organizer)
 `data/interim/mit-sea-grant-river-herring/`
 - `annotations.csv`: normalized boxes with category labels
@@ -31,6 +39,13 @@ consistent IDs over time. No 3D or pose.
 - YOLO format train/val split by video
 - `data.yaml` used by Ultralytics
 
+`data/processed/deep-vision-fish-yolo/`
+- YOLO-ready dataset built directly from the Deep Vision CSV annotations
+
+`data/processed/kakadu-fishai-yolo/`
+- YOLO-ready dataset built directly from the Kakadu COCO JSON
+- deterministic split: image id modulo 10 -> val
+
 `data/processed/domain-general-fish-yolo/` (auto-generated from manifest)
 - one-class fish detector training set composed from multiple normalized datasets
 - built from `configs/datasets/domain_general_fish.json`
@@ -38,14 +53,22 @@ consistent IDs over time. No 3D or pose.
 ## Key Scripts
 - `scripts/download_aau_zebrafish_reid.py`: download Kaggle dataset
 - `scripts/download_mit_river_herring.py`: download the LILA river herring image + metadata zips
+- `scripts/download_deep_vision_fish.py`: download the Deep Vision NMDC zip
+- `scripts/download_kakadu_fishai.py`: download the Kakadu Zenodo zip
 - `scripts/organize_aau_zebrafish_reid.py`: normalize into `data/interim/`
 - `scripts/organize_mit_river_herring.py`: extract and normalize the LILA COCO dataset into the repo layout
-- `scripts/fish_cli.py`: CLI/GUI for train/run/visualize/validate
+- `scripts/organize_deep_vision_fish.py`: build `data/processed/deep-vision-fish-yolo/`
+- `scripts/organize_kakadu_fishai.py`: build `data/processed/kakadu-fishai-yolo/`
+- `scripts/fish_cli.py`: CLI for train/run/visualize/validate
 - `test.py`: sanity test on a single frame; writes annotated PNG
 
 ## Domain-General Training
 - `src/pipeline/dataset.py` now accepts a JSON dataset manifest as well as a single normalized dataset root
-- `configs/datasets/domain_general_fish.json` currently mixes `data/interim/aau-zebrafish-reid` and `data/interim/mit-sea-grant-river-herring`
+- `configs/datasets/domain_general_fish.json` now mixes all four sources:
+  - `data/interim/aau-zebrafish-reid`
+  - `data/interim/mit-sea-grant-river-herring`
+  - `data/processed/deep-vision-fish-yolo`
+  - `data/processed/kakadu-fishai-yolo`
 - all boxes are still collapsed to a single detection class: `fish`
 
 ## Core Pipeline
@@ -53,11 +76,14 @@ consistent IDs over time. No 3D or pose.
 - Converts `annotations.csv` to YOLO labels
 - Splits by video/clip, or combines multiple prepared YOLO datasets from a manifest
 - Uses hardlinks where possible for speed/space
+- Supports PNG, JPG, and JPEG inputs
 
 `src/pipeline/train.py`
 - Trains YOLO (`yolov8n.pt` base)
 - Auto epochs from dataset size
 - Saves per-epoch, best, last
+- Writes a tee'd train log when `--log` is provided
+- Uses `models/runs/<output_stem>/` for per-run artifacts
 - Writes `models/latest.pt` + `models/latest.json`
 
 `src/pipeline/track.py`
@@ -98,7 +124,7 @@ For RTX 50-series, use a CUDA 12.x build.
 
 ## Common Commands
 Train:
-`python scripts/fish_cli.py train`
+`python scripts/fish_cli.py train configs/datasets/domain_general_fish.json models/domain_general_fish.pt --log models/domain_general_fish.train.log`
 
 Track:
 `python scripts/fish_cli.py run data/interim/aau-zebrafish-reid/vid1 outputs/tracks.csv`

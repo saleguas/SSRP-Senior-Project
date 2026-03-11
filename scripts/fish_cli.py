@@ -1,20 +1,21 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 from typing import Optional
 
-try:
-    from gooey import Gooey, GooeyParser
-except ImportError:
-    Gooey = None
-    GooeyParser = argparse.ArgumentParser
-
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from src.pipeline import train_detector, track_folder, validate_detector, visualize_folder
+from src.pipeline import (
+    describe_detector,
+    train_detector,
+    track_folder,
+    validate_detector,
+    visualize_folder,
+)
 from src.pipeline.utils import repo_root
 
 
@@ -42,6 +43,7 @@ def _resolve_weights() -> Path:
 
     models_root = repo_root() / "models"
     preferred = [
+        models_root / "runs" / "domain_general_fish" / "weights" / "best.pt",
         models_root / "yolo_fish" / "weights" / "best.pt",
         models_root / "yolo_fish" / "weights" / "last.pt",
     ]
@@ -85,7 +87,16 @@ def _resolve_weights() -> Path:
     )
 
 
+def _default_train_data() -> Path:
+    manifest = repo_root() / "configs" / "datasets" / "domain_general_fish.json"
+    if manifest.exists():
+        return manifest
+    return repo_root() / "data" / "interim" / "aau-zebrafish-reid"
+
+
 def _default_frames_dir(dataset_root: Path) -> Path:
+    if dataset_root.is_file():
+        return repo_root() / "data" / "interim" / "aau-zebrafish-reid" / "vid1"
     if (dataset_root / "vid1").exists():
         return dataset_root / "vid1"
     if dataset_root.exists():
@@ -95,111 +106,133 @@ def _default_frames_dir(dataset_root: Path) -> Path:
     return dataset_root
 
 
-def _add_arg(
-    parser: argparse.ArgumentParser,
-    *args: str,
-    widget: Optional[str] = None,
-    **kwargs: object,
-) -> None:
-    if Gooey and widget:
-        parser.add_argument(*args, widget=widget, **kwargs)
-    else:
-        parser.add_argument(*args, **kwargs)
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    parser = GooeyParser(description="Fish tracking pipeline")
+    parser = argparse.ArgumentParser(description="Fish tracking pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    default_dataset = repo_root() / "data" / "interim" / "aau-zebrafish-reid"
+    default_dataset = _default_train_data()
 
     train_parser = subparsers.add_parser("train", help="Train detector")
-    _add_arg(
-        train_parser,
+    train_parser.add_argument(
         "data",
         help="Normalized dataset folder, processed YOLO dataset root, or JSON dataset manifest",
-        widget="DirChooser",
         nargs="?",
         default=str(default_dataset),
     )
-    _add_arg(
-        train_parser,
+    train_parser.add_argument(
         "output",
         help="Output weights file (.pt)",
-        widget="FileSaver",
-        default=str(repo_root() / "models" / "fish_best.pt"),
+        nargs="?",
+        default=str(repo_root() / "models" / "domain_general_fish.pt"),
+    )
+    train_parser.add_argument(
+        "--epochs",
+        type=int,
+        default=0,
+        help="Override the auto-selected epoch count.",
+    )
+    train_parser.add_argument(
+        "--log",
+        default="",
+        help="Optional training log file path. Defaults to <output>.train.log.",
+    )
+    train_parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=0,
+        help="Override the training image size. Defaults to a speed-aware auto choice.",
+    )
+    train_parser.add_argument(
+        "--workers",
+        type=int,
+        default=-1,
+        help="Override dataloader workers. Defaults to an auto choice.",
+    )
+    train_parser.add_argument(
+        "--batch",
+        type=int,
+        default=0,
+        help="Override batch size. Defaults to Ultralytics AutoBatch.",
+    )
+    train_parser.add_argument(
+        "--model",
+        default="yolov8n.pt",
+        help="Base detection model to fine-tune.",
+    )
+    train_parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Enable deterministic training. This is slower; leave off for normal runs.",
     )
 
     run_parser = subparsers.add_parser("run", help="Run tracking")
-    _add_arg(
-        run_parser,
+    run_parser.add_argument(
         "data",
-        help="Frames folder (PNG images)",
-        widget="DirChooser",
+        help="Frames folder (PNG/JPG/JPEG images)",
     )
-    _add_arg(
-        run_parser,
+    run_parser.add_argument(
         "output",
         help="Output tracks CSV",
-        widget="FileSaver",
+        nargs="?",
         default=str(repo_root() / "outputs" / "tracks.csv"),
     )
-    _add_arg(
-        run_parser,
+    run_parser.add_argument(
         "--weights",
         help="Optional weights file to use instead of the default resolver",
-        widget="FileChooser",
         default="",
     )
 
     visualize_parser = subparsers.add_parser(
         "visualize", help="Write annotated tracking video"
     )
-    _add_arg(
-        visualize_parser,
+    visualize_parser.add_argument(
         "data",
-        help="Frames folder (PNG images)",
-        widget="DirChooser",
+        help="Frames folder (PNG/JPG/JPEG images)",
         nargs="?",
         default=str(_default_frames_dir(default_dataset)),
     )
-    _add_arg(
-        visualize_parser,
+    visualize_parser.add_argument(
         "output",
         help="Output video (.mp4)",
-        widget="FileSaver",
+        nargs="?",
         default=str(repo_root() / "outputs" / "visualization.mp4"),
     )
-    _add_arg(
-        visualize_parser,
+    visualize_parser.add_argument(
         "--weights",
         help="Optional weights file to use instead of the default resolver",
-        widget="FileChooser",
         default="",
     )
 
     validate_parser = subparsers.add_parser("validate", help="Validate detector")
-    _add_arg(
-        validate_parser,
+    validate_parser.add_argument(
         "data",
         help="Normalized dataset folder, processed YOLO dataset root, or JSON dataset manifest",
-        widget="DirChooser",
         nargs="?",
         default=str(default_dataset),
     )
-    _add_arg(
-        validate_parser,
+    validate_parser.add_argument(
         "output",
         help="Output metrics JSON",
-        widget="FileSaver",
+        nargs="?",
         default=str(repo_root() / "outputs" / "metrics.json"),
     )
-    _add_arg(
-        validate_parser,
+    validate_parser.add_argument(
         "--weights",
         help="Optional weights file to use instead of the default resolver",
-        widget="FileChooser",
         default="",
+    )
+
+    info_parser = subparsers.add_parser("model-info", help="Show detector architecture")
+    info_parser.add_argument(
+        "--model",
+        default="yolov8n.pt",
+        help="Model weights or YAML to inspect.",
+    )
+    info_parser.add_argument(
+        "--classes",
+        type=int,
+        default=1,
+        help="Number of detector classes to instantiate for the summary.",
     )
 
     return parser
@@ -212,9 +245,21 @@ def _run() -> int:
     if args.command == "train":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".pt")
-        metadata = train_detector(data_root, output_path)
+        log_path = _as_path(args.log) if args.log else None
+        metadata = train_detector(
+            data_root,
+            output_path,
+            epochs=args.epochs or None,
+            log_path=log_path,
+            imgsz=args.imgsz or None,
+            workers=None if args.workers < 0 else args.workers,
+            batch=args.batch or None,
+            deterministic=args.deterministic,
+            model_name=args.model,
+        )
         print(f"Saved best weights: {metadata['output_best']}")
         print(f"Saved last weights: {metadata['output_last']}")
+        print(f"Training log: {metadata['log_path']}")
         return 0
 
     if args.command == "run":
@@ -241,22 +286,16 @@ def _run() -> int:
         print(f"Wrote metrics: {output_path}")
         return 0
 
+    if args.command == "model-info":
+        info = describe_detector(args.model, classes=args.classes)
+        print(json.dumps(info, indent=2))
+        return 0
+
     parser.print_help()
     return 1
 
 
-if Gooey:
-
-    @Gooey(program_name="Fish Tracking", default_size=(820, 620))
-    def _gooey_main() -> None:
-        raise SystemExit(_run())
-
-
 def main() -> None:
-    # Keep the GUI for no-arg launches, but let real CLI invocations behave like a CLI.
-    if Gooey and len(sys.argv) == 1:
-        _gooey_main()
-        return
     raise SystemExit(_run())
 
 

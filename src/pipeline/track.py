@@ -10,11 +10,11 @@ from typing import Dict, List, Tuple
 import cv2
 from ultralytics import YOLO
 
-from .utils import repo_root, require_cuda
+from .utils import list_image_files, repo_root, require_cuda
 
 
-def _ensure_pngs(folder: Path) -> List[Path]:
-    return sorted(folder.glob("*.png"))
+def _list_images(folder: Path) -> List[Path]:
+    return list_image_files(folder)
 
 
 def _color_for_id(track_id: int) -> Tuple[int, int, int]:
@@ -92,12 +92,12 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
     require_cuda()
 
     images_dir = images_dir.resolve()
-    image_paths = _ensure_pngs(images_dir)
+    image_paths = _list_images(images_dir)
     if not image_paths:
         subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
         hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
         raise FileNotFoundError(
-            f"No PNG frames found in {images_dir}. Select a video folder.{hint}"
+            f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
         )
 
     model = YOLO(str(weights_path))
@@ -191,12 +191,12 @@ def visualize_folder(
     require_cuda()
 
     images_dir = images_dir.resolve()
-    image_paths = _ensure_pngs(images_dir)
+    image_paths = _list_images(images_dir)
     if not image_paths:
         subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
         hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
         raise FileNotFoundError(
-            f"No PNG frames found in {images_dir}. Select a video folder.{hint}"
+            f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
         )
 
     model = YOLO(str(weights_path))

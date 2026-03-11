@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Tuple
 from PIL import Image
 
 from src.data_registry import load_annotations_csv
-from .utils import link_or_copy, repo_root
+from .utils import link_or_copy, list_image_files, repo_root
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ def _list_videos(dataset_root: Path) -> List[Path]:
 
 
 def _list_frames(video_dir: Path) -> List[Path]:
-    return sorted(video_dir.glob("*.png"))
+    return list_image_files(video_dir)
 
 
 def _split_frames(videos: List[Path]) -> Tuple[List[Path], List[Path]]:
@@ -94,8 +94,9 @@ def _write_label_file(label_path: Path, lines: List[str]) -> None:
     label_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
-def _first_png(folder: Path) -> Optional[Path]:
-    return next(folder.glob("*.png"), None) if folder.exists() else None
+def _first_image(folder: Path) -> Optional[Path]:
+    images = list_image_files(folder)
+    return images[0] if images else None
 
 
 def _yolo_dataset_from_root(
@@ -107,7 +108,7 @@ def _yolo_dataset_from_root(
     labels_train = yolo_root / "labels" / "train"
     labels_val = yolo_root / "labels" / "val"
     yaml_path = yolo_root / "data.yaml"
-    sample_image = _first_png(images_train) or _first_png(images_val)
+    sample_image = _first_image(images_train) or _first_image(images_val)
     imgsz = _auto_imgsz(sample_image) if sample_image else 640
     return YoloDataset(
         dataset_root=dataset_root,
@@ -153,7 +154,7 @@ def _combine_split(
     for prefix, dataset in sources:
         source_images_dir = dataset.images_train if split_name == "train" else dataset.images_val
         source_labels_dir = dataset.labels_train if split_name == "train" else dataset.labels_val
-        for image_path in sorted(source_images_dir.glob("*.png")):
+        for image_path in list_image_files(source_images_dir):
             linked_name = f"{prefix}__{image_path.name}"
             linked_stem = Path(linked_name).stem
             image_dst = dest_images_dir / linked_name

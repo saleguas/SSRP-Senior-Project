@@ -12,6 +12,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
+
 
 @dataclass(frozen=True)
 class Annotation:
@@ -136,6 +138,12 @@ def _resolve_video_dir(dataset_dir: Path, video: str) -> Path:
     return video_dir
 
 
+def _iter_image_files(folder: Path) -> Iterator[Path]:
+    for image_path in sorted(folder.iterdir()):
+        if image_path.is_file() and image_path.suffix.lower() in IMAGE_EXTENSIONS:
+            yield image_path
+
+
 def iter_frames(
     dataset: str,
     video: str,
@@ -151,7 +159,7 @@ def iter_frames(
     annotations_path = dataset_dir / "annotations.csv"
     annotations_map = load_annotations_csv(annotations_path)
 
-    for image_path in sorted(video_dir.glob("*.png")):
+    for image_path in _iter_image_files(video_dir):
         frame_name = image_path.name
         ann = annotations_map.get(frame_name, [])
         if ann or include_empty:

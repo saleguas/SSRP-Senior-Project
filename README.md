@@ -1,148 +1,83 @@
-# Fish Trajectory Tracking Application
-This project tracks individual fish in fixed-camera videos using existing
-detectors and multi-object tracking methods, and extracts 2D trajectories.
+# Domain-General Fish Detection and Tracking
 
-## Folder Layout
-- `data/`: all datasets and artifacts (ignored by git)
-- `data/raw/`: raw downloads and unmodified extractions
-- `data/raw/aau-zebrafish-reid/`: raw Kaggle dataset folder
-- `data/raw/aau-zebrafish-reid/aau-zebrafish-reid.zip`: original zip
-- `data/raw/aau-zebrafish-reid/annotations.csv`: raw annotations after unzip
-- `data/raw/aau-zebrafish-reid/data/`: raw frames after unzip
-- `data/raw/mit-sea-grant-river-herring/`: raw LILA river herring downloads
-- `data/raw/mit-sea-grant-river-herring/mit_river_herring.zip`: original image zip
-- `data/raw/mit-sea-grant-river-herring/mit_sea_grant_river_herring.json.zip`: COCO metadata zip
-- `data/raw/deep-vision-fish/`: raw Deep Vision fish dataset download
-- `data/raw/deep-vision-fish/fishDatasetSimulationAlgorithm.zip`: original zip
-- `data/raw/kakadu-fishai/`: raw Zenodo Kakadu FishAI download
-- `data/raw/kakadu-fishai/202210-KakaduFishAI-TrainingData.zip`: original training zip
-- `data/interim/`: normalized, consistent layout used by code
-- `data/interim/aau-zebrafish-reid/`: normalized dataset root
-- `data/interim/aau-zebrafish-reid/annotations.csv`: annotations for all frames
-- `data/interim/aau-zebrafish-reid/vid1/`: frames for video 1 (`Vid1_*.png`)
-- `data/interim/aau-zebrafish-reid/vid2/`: frames for video 2 (`Vid2_*.png`)
-- `data/processed/`: derived artifacts (resized frames, caches, model outputs)
-- `scripts/`: one-off utilities for downloading and organizing data
-- `src/`: reusable Python code
-- `notebooks/`: exploration and experiments
-- `docs/`: project notes and references
+This project trains a one-class fish detector and uses multi-object tracking to keep IDs consistent within a video. The current stack uses YOLO for detection and BoT-SORT for tracking.
 
-## Data: AAU Zebrafish Re-Identification (Kaggle)
-Dataset slug: `aalborguniversity/aau-zebrafish-reid`
-Dataset page: [AAU Zebrafish ReID (Kaggle)](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid)
+## Datasets In Use
 
-### Kaggle API Setup
-- Place `kaggle.json` in `%USERPROFILE%\\.kaggle\\` (Windows) or `~/.kaggle/`
-- Or set `KAGGLE_CONFIG_DIR` to a folder containing `kaggle.json`
+These are the four datasets currently used in the active training manifest at `configs/datasets/domain_general_fish.json`.
 
-### Download and Organize
-1. Download the zip to `data/raw/aau-zebrafish-reid/`:
-```bash
-python scripts/download_aau_zebrafish_reid.py
-```
-2. Unzip the dataset into the raw folder:
-```bash
-python scripts/download_aau_zebrafish_reid.py --unzip
-```
-3. Normalize into the repo layout (moves frames + annotations, removes zip):
-```bash
-python scripts/organize_aau_zebrafish_reid.py --clean-empty
-```
+- [AAU Zebrafish ReID](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid): tank footage with fish annotations and identity labels
+- [MIT Sea Grant River Herring](https://lila.science/datasets/mit-sea-grant-river-herring/): river passage footage with fish bounding boxes
+- [Deep Vision fish dataset](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3): fish detection dataset used to widen visual domain coverage
+- [Kakadu FishAI Training Data](https://zenodo.org/records/7250921): underwater freshwater fish detection dataset
 
-Expected normalized layout:
-- `data/interim/aau-zebrafish-reid/annotations.csv`
-- `data/interim/aau-zebrafish-reid/vid1/*.png`
-- `data/interim/aau-zebrafish-reid/vid2/*.png`
+All training labels are collapsed into a single detection class: `fish`.
 
-## Data: MIT Sea Grant River Herring (LILA)
-Dataset page: [MIT Sea Grant River Herring (LILA)](https://lila.science/datasets/mit-sea-grant-river-herring/)
+## Model
 
-Current status: raw download and normalization into `data/interim/` are supported.
+- Detector: YOLOv8n initialized from pretrained `yolov8n.pt`
+- Tracking: BoT-SORT with the fixed-camera fish settings in `configs/trackers/botsort_fish.yaml`
+- Identity handling: online tracking only; there is no separate learned ReID model in the current pipeline
+- Current exported weights: `models/domain_general_fish.pt`
 
-Download the image zip and COCO metadata zip to `data/raw/mit-sea-grant-river-herring/`:
-```bash
-python scripts/download_mit_river_herring.py
-```
+YOLOv8n details for the current setup:
 
-Download only the metadata zip:
-```bash
-python scripts/download_mit_river_herring.py --metadata-only
+- Classes: `1`
+- Parameters: `3,011,043`
+- Stages: `23`
+- Strides: `8`, `16`, `32`
+- Depth multiple: `0.33`
+- Width multiple: `0.25`
+- Backbone blocks: `Conv`, `C2f`, `SPPF`
+- Detection head: multi-scale `Detect` head with upsample/concat feature fusion
+
+## Fine-Tuning Setup
+
+The current production run fine-tunes YOLOv8n on the merged 4-dataset manifest, built into `data/processed/domain-general-fish-yolo/`.
+
+- Training source: `configs/datasets/domain_general_fish.json`
+- Combined dataset size: `271,345` train images and `38,923` validation images
+- Epochs: `20`
+- Image size: `960`
+- Batch: Ultralytics AutoBatch, which selected `21` on the final run
+- Workers: `8`
+- Patience: `10`
+- Deterministic mode: `False`
+- Optimizer: `auto`
+- AMP: enabled
+
+## Train / Validation Split
+
+- AAU Zebrafish ReID and MIT Sea Grant River Herring are normalized as video datasets and split by video folder.
+- If a normalized dataset has `5+` video folders, the last `~20%` of folders are used for validation.
+- If a normalized dataset has `2-4` video folders, the last folder is used for validation.
+- If a normalized dataset has only `1` video folder, it falls back to an `80/20` frame split.
+- Deep Vision and Kakadu are prepared as YOLO datasets and keep their own train/validation splits.
+- The manifest merge preserves each source split and combines them into one YOLO train/validation root.
+- There is currently no separate held-out test set; evaluation is done on the merged validation split.
+
+## CLI
+
+Train the current domain-general detector and write a live log:
+
+```powershell
+python scripts/fish_cli.py train configs/datasets/domain_general_fish.json models/domain_general_fish.pt --log models/domain_general_fish.train.log
 ```
 
-Normalize the raw zip into the repo's interim layout:
-```bash
-python scripts/organize_mit_river_herring.py
+Monitor the training log:
+
+```powershell
+Get-Content models\domain_general_fish.train.log -Tail 50 -Wait
 ```
 
-Build a smaller development subset first:
-```bash
-python scripts/organize_mit_river_herring.py --location coonamessett --max-clips 5 --dest data/interim/mit-sea-grant-river-herring-sample
+Run tracking on a folder of frames with the trained weights:
+
+```powershell
+python scripts/fish_cli.py run <frames_folder> <tracks_csv> --weights models/domain_general_fish.pt
 ```
 
-## Data: Deep Vision Fish Dataset
-Dataset page: [Deep Vision fish dataset (NMDC)](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3)
-Direct zip: [fishDatasetSimulationAlgorithm.zip](https://ftp.nmdc.no/nmdc/IMR/MachineLearning/fishDatasetSimulationAlgorithm.zip)
+Render a tracked video:
 
-Current status: raw download is supported; normalization is not wired into the repo yet.
-
-Download the published zip to `data/raw/deep-vision-fish/`:
-```bash
-python scripts/download_deep_vision_fish.py
+```powershell
+python scripts/fish_cli.py visualize <frames_folder> <output_video> --weights models/domain_general_fish.pt
 ```
-
-## Data: Kakadu FishAI Training Data
-Dataset page: [A deep learning dataset for underwater object detection of tropical freshwater fish species in northern Australia (Zenodo)](https://zenodo.org/records/7250921)
-Direct zip: [202210-KakaduFishAI-TrainingData.zip](https://zenodo.org/records/7250921/files/202210-KakaduFishAI-TrainingData.zip?download=1)
-
-Current status: raw download is supported; normalization is not wired into the repo yet.
-
-Download the training zip to `data/raw/kakadu-fishai/`:
-```bash
-python scripts/download_kakadu_fishai.py
-```
-
-## Domain-General Fish Detector
-Current goal: train one detector that generalizes across multiple fish-video domains.
-
-Current manifest:
-- `configs/datasets/domain_general_fish.json`
-- sources included now: `aau-zebrafish-reid` + `mit-sea-grant-river-herring`
-
-Datasets currently in the project:
-- active training sources: [AAU Zebrafish ReID (Kaggle)](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid), [MIT Sea Grant River Herring (LILA)](https://lila.science/datasets/mit-sea-grant-river-herring/)
-- downloaded next sources to integrate: [Deep Vision fish dataset (NMDC)](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3), [Kakadu FishAI training data (Zenodo)](https://zenodo.org/records/7250921)
-
-Train the combined one-class fish detector:
-```bash
-python scripts/fish_cli.py train configs/datasets/domain_general_fish.json models/domain_general_fish.pt
-```
-
-The combined YOLO dataset is built automatically at:
-- `data/processed/domain-general-fish-yolo/`
-
-Candidate future sources:
-- curated repo: https://github.com/filippovarini/fish-datasets
-- prioritize adding footage that expands camera/domain coverage, especially aquarium/tank footage if the deployment target is home or lab fish tanks
-
-## Data Access (Python)
-Use `src/data_registry.py` to list datasets and iterate frames with boxes:
-```python
-from src.data_registry import list_datasets_with_videos, iter_frames
-
-print(list_datasets_with_videos())
-for frame in iter_frames("aau-zebrafish-reid", "vid1"):
-    print(frame.image_path, len(frame.annotations))
-```
-
-## CLI / GUI (Gooey)
-Run `python scripts/fish_cli.py` to open the GUI or use it as a CLI.
-CUDA GPU is required; the app fails fast if no GPU is available.
-
-Modes:
-- `train`: dataset folder -> output weights `.pt` (saves best + last)
-- `run`: frames folder -> output tracks `.csv` (uses `models/latest.pt`)
-- `visualize`: frames folder -> output video `.mp4` with IDs (uses `models/latest.pt`)
-- `validate`: dataset folder -> output metrics `.json` (uses `models/latest.pt`)
-
-If training appears stuck, run from the terminal (not the Gooey window) to see live logs.
-Train/validate default to `data/interim/aau-zebrafish-reid` if no dataset path is provided.
