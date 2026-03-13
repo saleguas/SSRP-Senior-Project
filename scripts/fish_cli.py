@@ -168,7 +168,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run tracking")
     run_parser.add_argument(
         "data",
-        help="Frames folder (PNG/JPG/JPEG images)",
+        help="Frames folder (PNG/JPG/JPEG images) or video file (.mp4/.avi/.mov/.mkv)",
     )
     run_parser.add_argument(
         "output",
@@ -187,7 +187,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     visualize_parser.add_argument(
         "data",
-        help="Frames folder (PNG/JPG/JPEG images)",
+        help="Frames folder (PNG/JPG/JPEG images) or video file (.mp4/.avi/.mov/.mkv)",
         nargs="?",
         default=str(_default_frames_dir(default_dataset)),
     )

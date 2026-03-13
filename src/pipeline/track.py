@@ -3,18 +3,130 @@ from __future__ import annotations
 import csv
 import math
 import os
-import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import cv2
 from ultralytics import YOLO
 
 from .utils import list_image_files, repo_root, require_cuda
 
+VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg", ".m4v", ".wmv")
+
+
+@dataclass(frozen=True)
+class TrackingSource:
+    path: Path
+    kind: str
+    source_arg: str | List[str]
+    frame_names: List[str]
+    total_frames: int | None
+    fps: float | None
+
 
 def _list_images(folder: Path) -> List[Path]:
     return list_image_files(folder)
+
+
+def _is_video_file(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+
+
+def _video_metadata(video_path: Path) -> Tuple[float | None, int | None]:
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        capture.release()
+        raise RuntimeError(f"Unable to open video file: {video_path}")
+
+    fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+    frame_count_value = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+    frame_count = int(frame_count_value) if frame_count_value and frame_count_value > 0 else None
+    capture.release()
+
+    return (fps if fps > 0 else None), frame_count
+
+
+def _missing_frames_error(images_dir: Path) -> FileNotFoundError:
+    subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
+    hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
+    return FileNotFoundError(
+        f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
+    )
+
+
+def _resolve_source(input_path: Path, default_fps: int = 30) -> TrackingSource:
+    source_path = input_path.resolve()
+
+    if source_path.is_dir():
+        image_paths = _list_images(source_path)
+        if not image_paths:
+            raise _missing_frames_error(source_path)
+        return TrackingSource(
+            path=source_path,
+            kind="frames",
+            source_arg=[str(path) for path in image_paths],
+            frame_names=[path.name for path in image_paths],
+            total_frames=len(image_paths),
+            fps=float(default_fps),
+        )
+
+    if _is_video_file(source_path):
+        fps, total_frames = _video_metadata(source_path)
+        return TrackingSource(
+            path=source_path,
+            kind="video",
+            source_arg=str(source_path),
+            frame_names=[],
+            total_frames=total_frames,
+            fps=fps,
+        )
+
+    if source_path.exists():
+        raise ValueError(
+            f"Unsupported tracking input: {source_path}. Use a folder of PNG/JPG/JPEG frames "
+            f"or a video file ({', '.join(VIDEO_EXTENSIONS)})."
+        )
+
+    raise FileNotFoundError(f"Tracking input not found: {source_path}")
+
+
+def _iter_results(model: YOLO, source: TrackingSource):
+    return model.track(
+        source=source.source_arg,
+        stream=True,
+        persist=True,
+        tracker=_tracker_name(),
+        conf=0.25,
+        iou=0.5,
+        device=0,
+        verbose=False,
+    )
+
+
+def _frame_name(source: TrackingSource, frame_index: int, result_path: str | None) -> str:
+    if source.kind == "frames":
+        if 0 <= frame_index < len(source.frame_names):
+            return source.frame_names[frame_index]
+        if result_path:
+            return Path(result_path).name
+    return f"{source.path.stem}_frame_{frame_index + 1:06d}"
+
+
+def _load_frame(source: TrackingSource, frame_index: int, fallback_path: str | None):
+    if source.kind == "frames" and 0 <= frame_index < len(source.frame_names):
+        return cv2.imread(str(source.path / source.frame_names[frame_index]))
+    if fallback_path and source.kind == "frames":
+        return cv2.imread(str(fallback_path))
+    return None
+
+
+def _should_log_progress(frame_index: int, total_frames: int | None) -> bool:
+    if frame_index == 1:
+        return True
+    if total_frames is not None and frame_index == total_frames:
+        return True
+    return frame_index % 25 == 0
 
 
 def _color_for_id(track_id: int) -> Tuple[int, int, int]:
@@ -49,6 +161,7 @@ def _jump_threshold(frame_w: int, frame_h: int, bbox_w: float, bbox_h: float) ->
         return max(30.0, 2.0 * max(bbox_w, bbox_h))
     diag = math.hypot(frame_w, frame_h)
     return max(30.0, 0.1 * diag)
+
 
 def _assign_display_id(
     raw_id: int,
@@ -88,34 +201,26 @@ def _assign_display_id(
     last_center[display_id] = center
     return display_id
 
+
+def _result_tracks(result) -> Sequence[Tuple[List[float], float | None, float]]:
+    boxes = result.boxes
+    if boxes is None or len(boxes) == 0:
+        return []
+
+    xyxy = boxes.xyxy.cpu().tolist()
+    conf = boxes.conf.cpu().tolist() if boxes.conf is not None else [None] * len(xyxy)
+    ids = boxes.id.cpu().tolist() if boxes.id is not None else [-1] * len(xyxy)
+    return list(zip(xyxy, conf, ids))
+
+
 def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None:
     require_cuda()
 
-    images_dir = images_dir.resolve()
-    image_paths = _list_images(images_dir)
-    if not image_paths:
-        subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
-        hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
-        raise FileNotFoundError(
-            f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
-        )
-
+    source = _resolve_source(images_dir)
     model = YOLO(str(weights_path))
-    tracker_name = _tracker_name()
     display_map: Dict[int, int] = {}
     last_center: Dict[int, Tuple[float, float]] = {}
     next_display_id = [1]
-
-    results = model.track(
-        source=[str(p) for p in image_paths],
-        stream=True,
-        persist=True,
-        tracker=tracker_name,
-        conf=0.25,
-        iou=0.5,
-        device=0,
-        verbose=False,
-    )
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     with output_csv.open("w", newline="", encoding="utf-8") as handle:
@@ -136,22 +241,18 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
             ]
         )
 
-        for result in results:
-            boxes = result.boxes
-            if boxes is None or len(boxes) == 0:
+        for frame_index, result in enumerate(_iter_results(model, source)):
+            frame_tracks = _result_tracks(result)
+            if not frame_tracks:
                 continue
 
             frame = result.orig_img
             if frame is None:
-                frame = cv2.imread(str(result.path))
+                frame = _load_frame(source, frame_index, getattr(result, "path", None))
             frame_h, frame_w = frame.shape[:2] if frame is not None else (0, 0)
+            frame_name = _frame_name(source, frame_index, getattr(result, "path", None))
 
-            xyxy = boxes.xyxy.cpu().tolist()
-            conf = boxes.conf.cpu().tolist() if boxes.conf is not None else [None] * len(xyxy)
-            ids = boxes.id.cpu().tolist() if boxes.id is not None else [-1] * len(xyxy)
-
-            frame_name = Path(result.path).name
-            for (x1, y1, x2, y2), score, track_id in zip(xyxy, conf, ids):
+            for (x1, y1, x2, y2), score, track_id in frame_tracks:
                 xc = (x1 + x2) / 2.0
                 yc = (y1 + y2) / 2.0
                 w = x2 - x1
@@ -182,6 +283,8 @@ def track_folder(images_dir: Path, output_csv: Path, weights_path: Path) -> None
                         float(f"{score:.4f}") if score is not None else "",
                     ]
                 )
+
+
 def visualize_folder(
     images_dir: Path,
     output_video: Path,
@@ -190,64 +293,40 @@ def visualize_folder(
 ) -> None:
     require_cuda()
 
-    images_dir = images_dir.resolve()
-    image_paths = _list_images(images_dir)
-    if not image_paths:
-        subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
-        hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
-        raise FileNotFoundError(
-            f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
-        )
-
+    source = _resolve_source(images_dir, default_fps=fps)
     model = YOLO(str(weights_path))
-    tracker_name = _tracker_name()
     display_map: Dict[int, int] = {}
     last_center: Dict[int, Tuple[float, float]] = {}
     next_display_id = [1]
-    total_frames = len(image_paths)
-    print(f"Visualize: {total_frames} frames -> {output_video}", flush=True)
+    total_frames = source.total_frames
+    total_label = total_frames if total_frames is not None else "unknown"
+    print(f"Visualize: {source.path} ({total_label} frames) -> {output_video}", flush=True)
 
     output_video.parent.mkdir(parents=True, exist_ok=True)
-    frames_dir = output_video.with_suffix("")
-    frames_dir = frames_dir.parent / f"{frames_dir.name}_frames"
-    if frames_dir.exists():
-        shutil.rmtree(frames_dir, ignore_errors=True)
-    frames_dir.mkdir(parents=True, exist_ok=True)
+    writer = None
+    writer_size: Tuple[int, int] | None = None
+    frames_written = 0
+    video_fps = float(source.fps or fps or 30)
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
-    saved_frames: List[Path] = []
-    tracker_initialized = False
-    for idx, image_path in enumerate(image_paths, start=1):
-        frame_output = frames_dir / image_path.name
-        track_args = {
-            "source": str(image_path),
-            "persist": True,
-            "conf": 0.25,
-            "iou": 0.5,
-            "device": 0,
-            "verbose": False,
-        }
-        if not tracker_initialized:
-            track_args["tracker"] = tracker_name
-            tracker_initialized = True
-        results = model.track(**track_args)
-        if not results:
-            continue
+    try:
+        for frame_index, result in enumerate(_iter_results(model, source), start=1):
+            frame = result.orig_img
+            if frame is None:
+                frame = _load_frame(source, frame_index - 1, getattr(result, "path", None))
+            if frame is None:
+                continue
 
-        result = results[0]
-        frame = result.orig_img
-        if frame is None:
-            frame = cv2.imread(str(image_path))
-        if frame is None:
-            continue
+            frame = frame.copy()
+            frame_h, frame_w = frame.shape[:2]
 
-        frame = frame.copy()
-        frame_h, frame_w = frame.shape[:2]
-        boxes = result.boxes
-        if boxes is not None and len(boxes) > 0:
-            xyxy = boxes.xyxy.cpu().tolist()
-            conf = boxes.conf.cpu().tolist() if boxes.conf is not None else [None] * len(xyxy)
-            ids = boxes.id.cpu().tolist() if boxes.id is not None else [-1] * len(xyxy)
-            for (x1, y1, x2, y2), score, track_id in zip(xyxy, conf, ids):
+            if writer is None:
+                writer_size = (frame_w, frame_h)
+                writer = cv2.VideoWriter(str(output_video), fourcc, video_fps, writer_size)
+                if not writer.isOpened():
+                    raise RuntimeError(f"Unable to open video writer for {output_video}")
+
+            for (x1, y1, x2, y2), score, track_id in _result_tracks(result):
                 x1_i, y1_i, x2_i, y2_i = map(int, (x1, y1, x2, y2))
                 xc = (x1 + x2) / 2.0
                 yc = (y1 + y2) / 2.0
@@ -293,42 +372,19 @@ def visualize_folder(
                     cv2.LINE_AA,
                 )
 
-        if not cv2.imwrite(str(frame_output), frame):
-            continue
-        saved_frames.append(frame_output)
-        try:
-            print(f"Saved frame {idx}/{total_frames}: {frame_output.name}", flush=True)
-        except OSError:
-            pass
+            if writer_size is not None and (frame.shape[1], frame.shape[0]) != writer_size:
+                frame = cv2.resize(frame, writer_size)
 
-    ordered_frames = [frames_dir / p.name for p in image_paths if (frames_dir / p.name).exists()]
-    if not ordered_frames:
-        raise RuntimeError("No frames were saved during visualization.")
+            writer.write(frame)
+            frames_written += 1
+            if _should_log_progress(frame_index, total_frames):
+                try:
+                    print(f"Rendered frame {frame_index}/{total_label}", flush=True)
+                except OSError:
+                    pass
+    finally:
+        if writer is not None:
+            writer.release()
 
-    first = cv2.imread(str(ordered_frames[0]))
-    if first is None:
-        raise RuntimeError("Unable to read saved frames to build video.")
-
-    height, width = first.shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(output_video), fourcc, fps, (width, height))
-
-    for idx, frame_path in enumerate(ordered_frames, start=1):
-        frame = cv2.imread(str(frame_path))
-        if frame is None:
-            continue
-        writer.write(frame)
-        if idx == 1 or idx == len(ordered_frames) or idx % 25 == 0:
-            try:
-                print(f"Stitch: {idx}/{len(ordered_frames)} frames", flush=True)
-            except OSError:
-                pass
-
-    writer.release()
-    shutil.rmtree(frames_dir, ignore_errors=True)
-
-
-
-
-
-
+    if frames_written == 0:
+        raise RuntimeError("No frames were written during visualization.")

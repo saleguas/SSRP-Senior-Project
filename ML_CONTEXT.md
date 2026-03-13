@@ -87,8 +87,8 @@ consistent IDs over time. No 3D or pose.
 - Writes `models/latest.pt` + `models/latest.json`
 
 `src/pipeline/track.py`
-- `track_folder`: runs tracking and writes CSV
-- `visualize_folder`: tracks + draws boxes + IDs and stitches MP4
+- `track_folder`: runs tracking on a frames folder or video file and writes CSV
+- `visualize_folder`: tracks + draws boxes + IDs and writes an annotated MP4
 - Default tracker: BoT-SORT with tuned config
 - Jump gating: reassigns display ID if a track "teleports"
 
@@ -131,6 +131,9 @@ Track:
 
 Visualize (predictions):
 `python scripts/fish_cli.py visualize data/interim/aau-zebrafish-reid/vid1 outputs/visualization.mp4`
+
+Visualize a new video:
+`python scripts/fish_cli.py visualize path/to/new_video.mp4 outputs/new_video_annotated.mp4`
 
 Sanity:
 `python test.py`

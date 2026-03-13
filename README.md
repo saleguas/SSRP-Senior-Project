@@ -1,10 +1,12 @@
 # Domain-General Fish Detection and Tracking
 
-This project trains a one-class fish detector and uses multi-object tracking to keep IDs consistent within a video. The current stack uses YOLO for detection and BoT-SORT for tracking.
+This project trains a one-class fish detector for video footage and uses multi-object tracking to keep fish IDs consistent within a clip. The current stack uses YOLOv8n for detection and BoT-SORT for tracking.
 
 ## Datasets In Use
 
 These are the four datasets currently used in the active training manifest at `configs/datasets/domain_general_fish.json`.
+
+Find more at: https://github.com/filippovarini/fish-datasets?tab=readme-ov-file
 
 - [AAU Zebrafish ReID](https://www.kaggle.com/datasets/aalborguniversity/aau-zebrafish-reid): tank footage with fish annotations and identity labels
 - [MIT Sea Grant River Herring](https://lila.science/datasets/mit-sea-grant-river-herring/): river passage footage with fish bounding boxes
@@ -15,36 +17,20 @@ All training labels are collapsed into a single detection class: `fish`.
 
 ## Model
 
-- Detector: YOLOv8n initialized from pretrained `yolov8n.pt`
-- Tracking: BoT-SORT with the fixed-camera fish settings in `configs/trackers/botsort_fish.yaml`
-- Identity handling: online tracking only; there is no separate learned ReID model in the current pipeline
-- Current exported weights: `models/domain_general_fish.pt`
-
-YOLOv8n details for the current setup:
-
-- Classes: `1`
-- Parameters: `3,011,043`
-- Stages: `23`
-- Strides: `8`, `16`, `32`
-- Depth multiple: `0.33`
-- Width multiple: `0.25`
-- Backbone blocks: `Conv`, `C2f`, `SPPF`
-- Detection head: multi-scale `Detect` head with upsample/concat feature fusion
+- Detector: pretrained `yolov8n.pt`, fine-tuned as a one-class `fish` detector
+- Tracker: BoT-SORT with the settings in `configs/trackers/botsort_fish.yaml`
+- Identity handling: online tracking only; there is no separate learned ReID model yet
+- Current weights: `models/domain_general_fish.pt`
+- Architecture summary: `23` stages, `3,011,043` parameters, stride levels `8/16/32`
 
 ## Fine-Tuning Setup
 
-The current production run fine-tunes YOLOv8n on the merged 4-dataset manifest, built into `data/processed/domain-general-fish-yolo/`.
+The current production run fine-tunes YOLOv8n on the merged 4-dataset manifest built into `data/processed/domain-general-fish-yolo/`.
 
 - Training source: `configs/datasets/domain_general_fish.json`
 - Combined dataset size: `271,345` train images and `38,923` validation images
-- Epochs: `20`
-- Image size: `960`
-- Batch: Ultralytics AutoBatch, which selected `21` on the final run
-- Workers: `8`
-- Patience: `10`
-- Deterministic mode: `False`
-- Optimizer: `auto`
-- AMP: enabled
+- Run settings: `20` epochs, `960` image size, AutoBatch=`21`, `8` workers, patience=`10`
+- Training mode: optimizer=`auto`, AMP enabled, deterministic=`False`
 
 ## Train / Validation Split
 
@@ -70,14 +56,16 @@ Monitor the training log:
 Get-Content models\domain_general_fish.train.log -Tail 50 -Wait
 ```
 
-Run tracking on a folder of frames with the trained weights:
+Run tracking on a folder of frames or a new video file:
 
 ```powershell
-python scripts/fish_cli.py run <frames_folder> <tracks_csv> --weights models/domain_general_fish.pt
+python scripts/fish_cli.py run path\to\new_video.mp4 outputs\new_video_tracks.csv --weights models\domain_general_fish.pt
 ```
 
-Render a tracked video:
+Render an annotated video from a folder of frames or a new video file:
 
 ```powershell
-python scripts/fish_cli.py visualize <frames_folder> <output_video> --weights models/domain_general_fish.pt
+python scripts/fish_cli.py visualize path\to\new_video.mp4 outputs\new_video_annotated.mp4 --weights models\domain_general_fish.pt
 ```
+
+If you omit `--weights`, the CLI will use `models/latest.pt` automatically.
