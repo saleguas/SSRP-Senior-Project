@@ -30,6 +30,12 @@ consistent IDs over time. No 3D or pose.
 - `202210-KakaduFishAI-TrainingData.zip`: Zenodo archive
 - `unzipped/`: extracted images + `KakaduFishAI_boundingbox.json`
 
+`data/raw/noaa-puget-sound-nearshore-fish/`
+- `noaa_estuary_fish-images.zip`: LILA/GCP image archive
+- `noaa_estuary_fish-annotations-2023.08.19.zip`: annotations zip
+- `unzipped/annotations/noaa_estuary_fish-2023.08.19.json`: extracted annotation JSON
+- `unzipped/images/`: extracted JPGs
+
 ## Data Layout (normalized via organizer)
 `data/interim/mit-sea-grant-river-herring/`
 - `annotations.csv`: normalized boxes with category labels
@@ -46,6 +52,11 @@ consistent IDs over time. No 3D or pose.
 - YOLO-ready dataset built directly from the Kakadu COCO JSON
 - deterministic split: image id modulo 10 -> val
 
+`data/processed/noaa-puget-sound-nearshore-fish-yolo/`
+- YOLO-ready dataset built from the NOAA COCO JSON
+- keeps `fish` positives, keeps `empty`/`crab` as negatives, excludes `fish_or_crab` and `unknown`
+- deterministic split by hashed `location` to reduce frame leakage
+
 `data/processed/domain-general-fish-yolo/` (auto-generated from manifest)
 - one-class fish detector training set composed from multiple normalized datasets
 - built from `configs/datasets/domain_general_fish.json`
@@ -55,10 +66,12 @@ consistent IDs over time. No 3D or pose.
 - `scripts/download_mit_river_herring.py`: download the LILA river herring image + metadata zips
 - `scripts/download_deep_vision_fish.py`: download the Deep Vision NMDC zip
 - `scripts/download_kakadu_fishai.py`: download the Kakadu Zenodo zip
+- `scripts/download_noaa_puget_sound_nearshore_fish.py`: download the NOAA image + annotation zips
 - `scripts/organize_aau_zebrafish_reid.py`: normalize into `data/interim/`
 - `scripts/organize_mit_river_herring.py`: extract and normalize the LILA COCO dataset into the repo layout
 - `scripts/organize_deep_vision_fish.py`: build `data/processed/deep-vision-fish-yolo/`
 - `scripts/organize_kakadu_fishai.py`: build `data/processed/kakadu-fishai-yolo/`
+- `scripts/organize_noaa_puget_sound_nearshore_fish.py`: build `data/processed/noaa-puget-sound-nearshore-fish-yolo/`
 - `scripts/fish_cli.py`: CLI for train/run/visualize/validate
 - `test.py`: sanity test on a single frame; writes annotated PNG
 
@@ -69,6 +82,8 @@ consistent IDs over time. No 3D or pose.
   - `data/interim/mit-sea-grant-river-herring`
   - `data/processed/deep-vision-fish-yolo`
   - `data/processed/kakadu-fishai-yolo`
+- `configs/datasets/domain_general_fish_plus_noaa_psnf.json` adds:
+  - `data/processed/noaa-puget-sound-nearshore-fish-yolo`
 - all boxes are still collapsed to a single detection class: `fish`
 
 ## Core Pipeline
@@ -125,6 +140,9 @@ For RTX 50-series, use a CUDA 12.x build.
 ## Common Commands
 Train:
 `python scripts/fish_cli.py train configs/datasets/domain_general_fish.json models/domain_general_fish.pt --log models/domain_general_fish.train.log`
+
+Train with NOAA:
+`python scripts/fish_cli.py train configs/datasets/domain_general_fish_plus_noaa_psnf.json models/domain_general_fish_plus_noaa_psnf.pt --log models/domain_general_fish_plus_noaa_psnf.train.log`
 
 Track:
 `python scripts/fish_cli.py run data/interim/aau-zebrafish-reid/vid1 outputs/tracks.csv`

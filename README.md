@@ -13,6 +13,10 @@ Find more at: https://github.com/filippovarini/fish-datasets?tab=readme-ov-file
 - [Deep Vision fish dataset](https://metadata.nmdc.no/metadata-api/landingpage/01d102345aef4639f063a13ea20cd3f3): fish detection dataset used to widen visual domain coverage
 - [Kakadu FishAI Training Data](https://zenodo.org/records/7250921): underwater freshwater fish detection dataset
 
+Optional fifth source now supported in a separate manifest:
+
+- [NOAA Puget Sound Nearshore Fish 2017-2018](https://storage.googleapis.com/public-datasets-lila/noaa-psnf/noaa_estuary_fish-images.zip): estuary images with fish/crab/empty labels; use the NOAA-specific build script to filter ambiguous labels and convert to YOLO
+
 All training labels are collapsed into a single detection class: `fish`.
 
 ## Model
@@ -69,3 +73,23 @@ python scripts/fish_cli.py visualize path\to\new_video.mp4 outputs\new_video_ann
 ```
 
 If you omit `--weights`, the CLI will use `models/latest.pt` automatically.
+
+## NOAA Optional Dataset
+
+Download the NOAA images and annotations:
+
+```powershell
+python scripts/download_noaa_puget_sound_nearshore_fish.py
+```
+
+Build the YOLO-ready dataset:
+
+```powershell
+python scripts/organize_noaa_puget_sound_nearshore_fish.py
+```
+
+Train with the NOAA-augmented manifest:
+
+```powershell
+python scripts/fish_cli.py train configs/datasets/domain_general_fish_plus_noaa_psnf.json models/domain_general_fish_plus_noaa_psnf.pt --log models/domain_general_fish_plus_noaa_psnf.train.log
+```

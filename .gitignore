@@ -19,5 +19,4 @@ __pycache__/
 
 # Training artifacts
 models/
-outputs/
 yolo*.pt
