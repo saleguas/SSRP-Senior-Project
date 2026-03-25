@@ -16,6 +16,7 @@ from src.liao_lab import (
     load_fish_coords_xlsx,
     render_source_slug,
 )
+from src.dataset_layout import AVAILABLE_TRAINING_MANIFEST, AVAILABLE_TRAINING_ROOT
 from src.pipeline import (
     describe_detector,
     train_detector,
@@ -94,21 +95,60 @@ def _resolve_weights() -> Path:
     )
 
 
+def _manifest_is_usable(manifest_path: Path) -> bool:
+    if not manifest_path.exists():
+        return False
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    source_specs = payload.get("sources")
+    if not isinstance(source_specs, list) or not source_specs:
+        return False
+
+    for spec in source_specs:
+        if not isinstance(spec, dict):
+            return False
+        path_value = spec.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            return False
+        source_root = (manifest_path.parent / path_value).resolve()
+        if not source_root.exists():
+            return False
+        if source_root.is_file() and source_root.suffix.lower() == ".json":
+            continue
+        if (source_root / "data.yaml").exists():
+            continue
+        if (source_root / "annotations.csv").exists():
+            continue
+        return False
+    return True
+
+
 def _default_train_data() -> Path:
     canonical_training_root = (
         repo_root() / "data" / "training" / "domain-general-fish-all-yolo"
     )
     if canonical_training_root.exists():
         return canonical_training_root
+    if AVAILABLE_TRAINING_ROOT.exists():
+        return AVAILABLE_TRAINING_ROOT
 
     manifests = [
+        AVAILABLE_TRAINING_MANIFEST,
         repo_root() / "configs" / "datasets" / "domain_general_fish_all.json",
         repo_root() / "configs" / "datasets" / "domain_general_fish_plus_noaa_psnf.json",
         repo_root() / "configs" / "datasets" / "domain_general_fish.json",
     ]
     for manifest in manifests:
-        if manifest.exists():
+        if _manifest_is_usable(manifest):
             return manifest
+    processed_roots = sorted((repo_root() / "data" / "processed").glob("*-yolo"))
+    for dataset_root in processed_roots:
+        if (dataset_root / "data.yaml").exists():
+            return dataset_root
     return repo_root() / "data" / "interim" / "aau-zebrafish-reid"
 
 
@@ -147,6 +187,8 @@ def _visualize_batch(
     output_root: Path,
     weights_path: Path,
     write_tracks: bool,
+    fps: float,
+    duration_sec: float | None,
 ) -> list[dict[str, object]]:
     sources = discover_render_sources(batch_root)
     if not sources:
@@ -170,6 +212,8 @@ def _visualize_batch(
             source,
             output_video,
             weights_path,
+            fps=fps,
+            target_duration_sec=duration_sec,
             coords_by_frame=coords_by_frame,
         )
 
@@ -316,6 +360,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional Fish coords.xlsx file to overlay reference points.",
         default="",
     )
+    visualize_parser.add_argument(
+        "--fps",
+        type=float,
+        default=30.0,
+        help="Output FPS. For frame folders this controls playback speed when --duration-sec is not set.",
+    )
+    visualize_parser.add_argument(
+        "--duration-sec",
+        type=float,
+        default=0.0,
+        help="For frame-folder inputs, stretch/compress playback to this many seconds.",
+    )
 
     visualize_batch_parser = subparsers.add_parser(
         "visualize-batch",
@@ -340,6 +396,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--write-tracks",
         action="store_true",
         help="Also write tracks CSVs for every source. Coords clips always get CSV + check JSON.",
+    )
+    visualize_batch_parser.add_argument(
+        "--fps",
+        type=float,
+        default=30.0,
+        help="Output FPS. For frame folders this controls playback speed when --duration-sec is not set.",
+    )
+    visualize_batch_parser.add_argument(
+        "--duration-sec",
+        type=float,
+        default=0.0,
+        help="For frame-folder inputs, stretch/compress playback to this many seconds.",
     )
 
     validate_parser = subparsers.add_parser("validate", help="Validate detector")
@@ -414,7 +482,14 @@ def _run() -> int:
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
         weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
         coords_by_frame = _load_coords_xlsx(args.coords_xlsx) if args.coords_xlsx else None
-        visualize_folder(data_root, output_path, weights_path, coords_by_frame=coords_by_frame)
+        visualize_folder(
+            data_root,
+            output_path,
+            weights_path,
+            fps=args.fps,
+            target_duration_sec=args.duration_sec or None,
+            coords_by_frame=coords_by_frame,
+        )
         print(f"Wrote video: {output_path}")
         return 0
 
@@ -427,6 +502,8 @@ def _run() -> int:
             output_root,
             weights_path,
             write_tracks=args.write_tracks,
+            fps=args.fps,
+            duration_sec=args.duration_sec or None,
         )
         print(f"Wrote batch outputs: {output_root}")
         print(f"Processed sources: {len(summary)}")

@@ -4,6 +4,8 @@ import csv
 import math
 import os
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Mapping, Sequence, Tuple
@@ -153,6 +155,21 @@ def _candidate_output_fps(preferred_fps: float | None, fallback_fps: float = 30.
     return values or [30.0]
 
 
+def _resolve_output_fps(
+    source: TrackingSource,
+    fallback_fps: float,
+    target_duration_sec: float | None,
+) -> float:
+    if (
+        source.kind == "frames"
+        and target_duration_sec is not None
+        and target_duration_sec > 0
+        and source.total_frames
+    ):
+        return max(0.2, float(source.total_frames) / float(target_duration_sec))
+    return float(source.fps or fallback_fps or 30.0)
+
+
 def _open_video_writer(
     output_video: Path,
     fourcc: int,
@@ -165,6 +182,56 @@ def _open_video_writer(
             return writer, candidate_fps
         writer.release()
     raise RuntimeError(f"Unable to open video writer for {output_video}")
+
+
+def _ffmpeg_path() -> str | None:
+    return shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+
+
+def _finalize_video_output(temp_video: Path, output_video: Path) -> None:
+    ffmpeg = _ffmpeg_path()
+    if ffmpeg is None:
+        temp_video.replace(output_video)
+        return
+
+    reencoded_video = output_video.with_name(f"{output_video.stem}.__encoded__.mp4")
+    if reencoded_video.exists():
+        reencoded_video.unlink()
+
+    command = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        str(temp_video),
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "-vf",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        str(reencoded_video),
+    ]
+    try:
+        subprocess.run(command, check=True)
+    except Exception:
+        if reencoded_video.exists():
+            reencoded_video.unlink()
+        temp_video.replace(output_video)
+        return
+
+    temp_video.unlink(missing_ok=True)
+    if output_video.exists():
+        output_video.unlink()
+    reencoded_video.replace(output_video)
 
 
 def _color_for_id(track_id: int) -> Tuple[int, int, int]:
@@ -327,7 +394,8 @@ def visualize_folder(
     images_dir: Path,
     output_video: Path,
     weights_path: Path,
-    fps: int = 30,
+    fps: float = 30.0,
+    target_duration_sec: float | None = None,
     coords_by_frame: Mapping[int, Sequence["CoordPoint"]] | None = None,
 ) -> None:
     require_cuda()
@@ -345,8 +413,10 @@ def visualize_folder(
     writer = None
     writer_size: Tuple[int, int] | None = None
     frames_written = 0
-    video_fps = float(source.fps or fps or 30)
+    video_fps = _resolve_output_fps(source, fallback_fps=float(fps or 30.0), target_duration_sec=target_duration_sec)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    temp_output_video = output_video.with_name(f"{output_video.stem}.__raw__.mp4")
+    temp_output_video.unlink(missing_ok=True)
 
     try:
         for frame_index, result in enumerate(_iter_results(model, source), start=1):
@@ -362,7 +432,7 @@ def visualize_folder(
 
             if writer is None:
                 writer_size = (frame_w, frame_h)
-                writer, actual_fps = _open_video_writer(output_video, fourcc, writer_size, video_fps)
+                writer, actual_fps = _open_video_writer(temp_output_video, fourcc, writer_size, video_fps)
                 if abs(actual_fps - video_fps) > 1e-6:
                     print(
                         f"Adjusted output FPS for {output_video.name}: {video_fps:.3f} -> {actual_fps:.3f}",
@@ -453,4 +523,7 @@ def visualize_folder(
             writer.release()
 
     if frames_written == 0:
+        temp_output_video.unlink(missing_ok=True)
         raise RuntimeError("No frames were written during visualization.")
+
+    _finalize_video_output(temp_output_video, output_video)

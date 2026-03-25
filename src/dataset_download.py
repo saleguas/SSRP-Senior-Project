@@ -13,6 +13,7 @@ from src.dataset_constants import (
     LIAO_LAB_VIDEOS,
     MIT_RIVER_HERRING,
     NOAA_PUGET_SOUND_NEARSHORE_FISH,
+    THREE_D_ZEF20,
 )
 
 DATASET_SLUG_AAU = "aalborguniversity/aau-zebrafish-reid"
@@ -376,6 +377,10 @@ def run_download(dataset_name: str, argv: list[str]) -> int:
         return download_mit(argv)
     if dataset_name == NOAA_PUGET_SOUND_NEARSHORE_FISH:
         return download_noaa(argv)
+    if dataset_name == THREE_D_ZEF20:
+        raise SystemExit(
+            f"{THREE_D_ZEF20} does not have a download step. Use organize_dataset.py with --source-zip instead."
+        )
     if dataset_name == LIAO_LAB_VIDEOS:
         raise SystemExit(
             f"{LIAO_LAB_VIDEOS} does not have a download step. Use organize_dataset.py instead."

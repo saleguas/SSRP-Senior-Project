@@ -8,6 +8,7 @@ KAKADU_FISHAI = "kakadu-fishai"
 LIAO_LAB_VIDEOS = "liao-lab-videos"
 MIT_RIVER_HERRING = "mit-sea-grant-river-herring"
 NOAA_PUGET_SOUND_NEARSHORE_FISH = "noaa-puget-sound-nearshore-fish"
+THREE_D_ZEF20 = "3d-zef20"
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,12 @@ DATASET_SPECS: tuple[DatasetSpec, ...] = (
         aliases=("kakadu", "fishai"),
         role="training",
         downloadable=True,
+    ),
+    DatasetSpec(
+        name=THREE_D_ZEF20,
+        aliases=("3dzef", "3d-zef", "zef20"),
+        role="training",
+        downloadable=False,
     ),
     DatasetSpec(
         name=LIAO_LAB_VIDEOS,

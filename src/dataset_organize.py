@@ -23,6 +23,7 @@ from src.dataset_constants import (
     LIAO_LAB_VIDEOS,
     MIT_RIVER_HERRING,
     NOAA_PUGET_SOUND_NEARSHORE_FISH,
+    THREE_D_ZEF20,
 )
 from src.liao_lab import discover_render_sources, find_fish_coords_xlsx, render_source_slug
 from src.pipeline.utils import is_image_file, link_or_copy, write_json
@@ -39,6 +40,8 @@ MIT_COPY_CHUNK_SIZE = 8 * 1024 * 1024
 NOAA_IMAGES_ZIP_NAME = "noaa_estuary_fish-images.zip"
 NOAA_ANNOTATIONS_ZIP_NAME = "noaa_estuary_fish-annotations-2023.08.19.zip"
 NOAA_ANNOTATIONS_JSON_NAME = "noaa_estuary_fish-2023.08.19.json"
+THREE_D_ZEF20_DEFAULT_SOURCE_ZIP = r"C:\Users\game\Downloads\3DZeF20.zip"
+THREE_D_ZEF20_ARCHIVE_ROOT = "3DZeF20"
 LIAO_DEFAULT_SOURCE_ZIP = r"C:\Users\game\Documents\quick\Liao-lab-videos.zip"
 
 
@@ -114,6 +117,41 @@ def organize_aau(argv: list[str]) -> int:
     dest_dir = resolve_local_path(args.dest)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    def has_extracted_payload(root: Path) -> bool:
+        if (root / "annotations.csv").exists():
+            return True
+        for pattern in ("Vid1_*.png", "Vid2_*.png"):
+            if next(root.rglob(pattern), None) is not None:
+                return True
+        return False
+
+    def select_zip(root: Path) -> Path:
+        preferred = root / AAU_ZIP_NAME
+        if preferred.exists():
+            return preferred
+        zip_files = sorted(root.glob("*.zip"))
+        if len(zip_files) == 1:
+            return zip_files[0]
+        if not zip_files:
+            raise FileNotFoundError(
+                f"No extracted AAU data or zip archive found in {root}"
+            )
+        names = ", ".join(path.name for path in zip_files)
+        raise FileNotFoundError(
+            f"Multiple zip files found in {root}; expected one AAU archive. Found: {names}"
+        )
+
+    def ensure_extracted(root: Path) -> Path | None:
+        if has_extracted_payload(root):
+            return None
+        zip_path = select_zip(root)
+        shutil.unpack_archive(str(zip_path), str(root))
+        if not has_extracted_payload(root):
+            raise FileNotFoundError(f"AAU extraction failed under {root}")
+        return zip_path
+
+    used_zip_path = ensure_extracted(source_dir)
+
     def move_or_copy(src: Path, dst: Path) -> None:
         if dst.exists():
             return
@@ -142,7 +180,7 @@ def organize_aau(argv: list[str]) -> int:
         move_or_copy(annotations_src, annotations_dst)
 
     if not args.keep_zip:
-        zip_path = source_dir / AAU_ZIP_NAME
+        zip_path = used_zip_path or (source_dir / AAU_ZIP_NAME)
         if zip_path.exists():
             zip_path.unlink()
 
@@ -1034,6 +1072,211 @@ def organize_liao(argv: list[str]) -> int:
     return 0
 
 
+def organize_three_d_zef20(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Build a YOLO dataset root from the labeled 3D-ZeF training sequences."
+    )
+    parser.add_argument(
+        "--source-zip",
+        default=THREE_D_ZEF20_DEFAULT_SOURCE_ZIP,
+        help="Path to 3DZeF20.zip.",
+    )
+    parser.add_argument(
+        "--dest",
+        default=f"data/processed/{THREE_D_ZEF20}-yolo",
+        help="Output YOLO dataset root.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild the destination even if it already exists.",
+    )
+    parser.add_argument(
+        "--val-sequence",
+        action="append",
+        default=[],
+        help="Sequence name to reserve for validation (repeatable). Defaults to the last labeled sequence.",
+    )
+    parser.add_argument(
+        "--view",
+        action="append",
+        choices=("top", "front"),
+        default=[],
+        help="Camera view to export (repeatable). Defaults to both top and front.",
+    )
+    args = parser.parse_args(argv)
+
+    source_zip = resolve_local_path(args.source_zip)
+    output_root = resolve_local_path(args.dest)
+
+    if not source_zip.exists():
+        raise FileNotFoundError(f"3D-ZeF archive not found: {source_zip}")
+    if output_root.exists():
+        if not args.force:
+            raise FileExistsError(
+                f"Destination already exists: {output_root}. Use --force to rebuild."
+            )
+        shutil.rmtree(output_root, ignore_errors=True)
+
+    selected_views = tuple(dict.fromkeys(args.view or ["top", "front"]))
+    view_specs = {
+        "top": {"folder": "imgT", "bbox_offset": 7},
+        "front": {"folder": "imgF", "bbox_offset": 14},
+    }
+
+    def archive_lookup(archive: zipfile.ZipFile) -> Dict[str, zipfile.ZipInfo]:
+        return {info.filename: info for info in archive.infolist()}
+
+    def train_sequences(index: Dict[str, zipfile.ZipInfo]) -> List[str]:
+        prefix = f"{THREE_D_ZEF20_ARCHIVE_ROOT}/train/"
+        names = {
+            path.split("/")[2]
+            for path in index
+            if path.startswith(prefix) and len(path.split("/")) >= 4
+        }
+        return sorted(names)
+
+    def load_boxes_by_view(
+        archive: zipfile.ZipFile,
+        index: Dict[str, zipfile.ZipInfo],
+        sequence_name: str,
+    ) -> Dict[str, Dict[int, List[Tuple[float, float, float, float]]]]:
+        gt_name = f"{THREE_D_ZEF20_ARCHIVE_ROOT}/train/{sequence_name}/gt/gt.txt"
+        if gt_name not in index:
+            raise FileNotFoundError(f"Missing 3D-ZeF annotations: {gt_name}")
+
+        boxes_by_view: Dict[str, Dict[int, List[Tuple[float, float, float, float]]]] = {
+            spec["folder"]: defaultdict(list) for spec in view_specs.values()
+        }
+        with archive.open(index[gt_name]) as handle:
+            wrapper = io.TextIOWrapper(handle, encoding="utf-8", newline="")
+            reader = csv.reader(wrapper)
+            for row in reader:
+                if len(row) < 19:
+                    continue
+                frame_index = int(row[0].strip())
+                for spec in view_specs.values():
+                    left = float(row[spec["bbox_offset"]].strip())
+                    top = float(row[spec["bbox_offset"] + 1].strip())
+                    width = float(row[spec["bbox_offset"] + 2].strip())
+                    height = float(row[spec["bbox_offset"] + 3].strip())
+                    if width <= 0 or height <= 0:
+                        continue
+                    boxes_by_view[spec["folder"]][frame_index].append(
+                        (left, top, left + width, top + height)
+                    )
+        return boxes_by_view
+
+    with zipfile.ZipFile(source_zip) as archive:
+        index = archive_lookup(archive)
+        sequences = train_sequences(index)
+        if not sequences:
+            raise FileNotFoundError(
+                f"No labeled training sequences found in {source_zip}"
+            )
+
+        val_sequences = sorted(set(args.val_sequence or [sequences[-1]]))
+        unknown_val_sequences = [name for name in val_sequences if name not in sequences]
+        if unknown_val_sequences:
+            raise ValueError(
+                "Unknown 3D-ZeF validation sequence(s): "
+                + ", ".join(unknown_val_sequences)
+            )
+
+        counts = Counter()
+        processed_sequences: List[dict] = []
+        for sequence_name in sequences:
+            split_name = "val" if sequence_name in val_sequences else "train"
+            boxes_by_view = load_boxes_by_view(archive, index, sequence_name)
+            sequence_counts = Counter()
+
+            for view_name in selected_views:
+                folder_name = str(view_specs[view_name]["folder"])
+                frames = boxes_by_view[folder_name]
+                for frame_index in sorted(frames):
+                    image_name = (
+                        f"{THREE_D_ZEF20_ARCHIVE_ROOT}/train/"
+                        f"{sequence_name}/{folder_name}/{frame_index:06d}.jpg"
+                    )
+                    if image_name not in index:
+                        raise FileNotFoundError(f"Missing 3D-ZeF image: {image_name}")
+
+                    image_bytes = archive.read(index[image_name])
+                    with Image.open(io.BytesIO(image_bytes)) as handle:
+                        width, height = handle.size
+
+                    linked_name = (
+                        f"{sequence_name.lower()}__{folder_name.lower()}__{frame_index:06d}.jpg"
+                    )
+                    dest_image = output_root / "images" / split_name / linked_name
+                    dest_image.parent.mkdir(parents=True, exist_ok=True)
+                    dest_image.write_bytes(image_bytes)
+
+                    label_path = (
+                        output_root
+                        / "labels"
+                        / split_name
+                        / f"{Path(linked_name).stem}.txt"
+                    )
+                    label_lines = yolo_lines(frames[frame_index], width, height)
+                    write_label(label_path, label_lines)
+
+                    counts[f"{split_name}_images"] += 1
+                    counts[f"{split_name}_boxes"] += len(label_lines)
+                    sequence_counts["images"] += 1
+                    sequence_counts["boxes"] += len(label_lines)
+
+            processed_sequences.append(
+                {
+                    "name": sequence_name,
+                    "split": split_name,
+                    "images": sequence_counts["images"],
+                    "boxes": sequence_counts["boxes"],
+                }
+            )
+            print(
+                f"Processed {sequence_name} [{split_name}] "
+                f"images={sequence_counts['images']} boxes={sequence_counts['boxes']}"
+            )
+
+    yaml_path = output_root / "data.yaml"
+    yaml_path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_path.write_text(
+        "\n".join(
+            [
+                f"path: {output_root.as_posix()}",
+                "train: images/train",
+                "val: images/val",
+                "nc: 1",
+                "names:",
+                "  0: fish",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    write_json(
+        output_root / "build_info.json",
+        {
+            "name": THREE_D_ZEF20,
+            "source_zip": str(source_zip),
+            "views": list(selected_views),
+            "train_sequences": [name for name in sequences if name not in val_sequences],
+            "val_sequences": val_sequences,
+            "counts": dict(counts),
+            "sequences": processed_sequences,
+        },
+    )
+    print(f"Built {THREE_D_ZEF20} YOLO dataset at {output_root}")
+    print(
+        f"train images={counts.get('train_images', 0)} "
+        f"val images={counts.get('val_images', 0)} "
+        f"train boxes={counts.get('train_boxes', 0)} "
+        f"val boxes={counts.get('val_boxes', 0)}"
+    )
+    return 0
+
+
 def run_organize(dataset_name: str, argv: list[str]) -> int:
     if dataset_name == AAU_ZEBRAFISH_REID:
         return organize_aau(argv)
@@ -1041,6 +1284,8 @@ def run_organize(dataset_name: str, argv: list[str]) -> int:
         return organize_deep_vision(argv)
     if dataset_name == KAKADU_FISHAI:
         return organize_kakadu(argv)
+    if dataset_name == THREE_D_ZEF20:
+        return organize_three_d_zef20(argv)
     if dataset_name == LIAO_LAB_VIDEOS:
         return organize_liao(argv)
     if dataset_name == MIT_RIVER_HERRING:

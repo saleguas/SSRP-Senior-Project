@@ -1,8 +1,16 @@
 # Data and large artifacts
 data/**
 !data/
+!data/raw/
+!data/raw/.gitkeep
+!data/interim/
+!data/interim/.gitkeep
+!data/processed/
+!data/processed/.gitkeep
 !data/training/
 !data/training/.gitkeep
+!data/training/manifests/
+!data/training/manifests/.gitkeep
 !data/generative/
 !data/generative/.gitkeep
 

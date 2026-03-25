@@ -2,6 +2,8 @@
 
 This project trains a one-class fish detector for video footage and uses multi-object tracking to keep fish IDs consistent within a clip. The current stack uses YOLOv8n for detection and BoT-SORT for tracking.
 
+For the current download/organize/training folder structure, see `DATA_LAYOUT.md`.
+
 ## Datasets In Use
 
 These are the four datasets currently used in the active training manifest at `configs/datasets/domain_general_fish.json`.

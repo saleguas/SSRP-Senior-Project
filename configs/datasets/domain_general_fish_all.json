@@ -19,6 +19,10 @@
       "path": "../../data/processed/kakadu-fishai-yolo"
     },
     {
+      "name": "3d-zef20",
+      "path": "../../data/processed/3d-zef20-yolo"
+    },
+    {
       "name": "noaa-puget-sound-nearshore-fish",
       "path": "../../data/processed/noaa-puget-sound-nearshore-fish-yolo"
     }
