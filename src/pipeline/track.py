@@ -3,14 +3,18 @@ from __future__ import annotations
 import csv
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Mapping, Sequence, Tuple
 
 import cv2
 from ultralytics import YOLO
 
 from .utils import list_image_files, repo_root, require_cuda
+
+if TYPE_CHECKING:
+    from src.liao_lab import CoordPoint
 
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg", ".m4v", ".wmv")
 
@@ -113,6 +117,11 @@ def _frame_name(source: TrackingSource, frame_index: int, result_path: str | Non
     return f"{source.path.stem}_frame_{frame_index + 1:06d}"
 
 
+def _frame_index_from_name(name: str) -> int | None:
+    match = re.search(r"(\d+)(?=\.[^.]+$)", name)
+    return int(match.group(1)) if match else None
+
+
 def _load_frame(source: TrackingSource, frame_index: int, fallback_path: str | None):
     if source.kind == "frames" and 0 <= frame_index < len(source.frame_names):
         return cv2.imread(str(source.path / source.frame_names[frame_index]))
@@ -127,6 +136,35 @@ def _should_log_progress(frame_index: int, total_frames: int | None) -> bool:
     if total_frames is not None and frame_index == total_frames:
         return True
     return frame_index % 25 == 0
+
+
+def _candidate_output_fps(preferred_fps: float | None, fallback_fps: float = 30.0) -> List[float]:
+    values: List[float] = []
+    for value in (preferred_fps, fallback_fps, 25.0, 24.0):
+        if value is None or not math.isfinite(value):
+            continue
+        normalized = float(value)
+        if normalized <= 0:
+            continue
+        if normalized > 60.0:
+            normalized = 60.0
+        if all(abs(existing - normalized) > 1e-6 for existing in values):
+            values.append(normalized)
+    return values or [30.0]
+
+
+def _open_video_writer(
+    output_video: Path,
+    fourcc: int,
+    writer_size: Tuple[int, int],
+    preferred_fps: float | None,
+):
+    for candidate_fps in _candidate_output_fps(preferred_fps):
+        writer = cv2.VideoWriter(str(output_video), fourcc, candidate_fps, writer_size)
+        if writer.isOpened():
+            return writer, candidate_fps
+        writer.release()
+    raise RuntimeError(f"Unable to open video writer for {output_video}")
 
 
 def _color_for_id(track_id: int) -> Tuple[int, int, int]:
@@ -290,6 +328,7 @@ def visualize_folder(
     output_video: Path,
     weights_path: Path,
     fps: int = 30,
+    coords_by_frame: Mapping[int, Sequence["CoordPoint"]] | None = None,
 ) -> None:
     require_cuda()
 
@@ -319,12 +358,16 @@ def visualize_folder(
 
             frame = frame.copy()
             frame_h, frame_w = frame.shape[:2]
+            frame_name = _frame_name(source, frame_index - 1, getattr(result, "path", None))
 
             if writer is None:
                 writer_size = (frame_w, frame_h)
-                writer = cv2.VideoWriter(str(output_video), fourcc, video_fps, writer_size)
-                if not writer.isOpened():
-                    raise RuntimeError(f"Unable to open video writer for {output_video}")
+                writer, actual_fps = _open_video_writer(output_video, fourcc, writer_size, video_fps)
+                if abs(actual_fps - video_fps) > 1e-6:
+                    print(
+                        f"Adjusted output FPS for {output_video.name}: {video_fps:.3f} -> {actual_fps:.3f}",
+                        flush=True,
+                    )
 
             for (x1, y1, x2, y2), score, track_id in _result_tracks(result):
                 x1_i, y1_i, x2_i, y2_i = map(int, (x1, y1, x2, y2))
@@ -371,6 +414,29 @@ def visualize_folder(
                     2,
                     cv2.LINE_AA,
                 )
+
+            if coords_by_frame:
+                coords_frame_index = _frame_index_from_name(frame_name) or frame_index
+                for point in coords_by_frame.get(coords_frame_index, []):
+                    center = (int(round(point.x)), int(round(point.y)))
+                    cv2.drawMarker(
+                        frame,
+                        center,
+                        (0, 255, 255),
+                        markerType=cv2.MARKER_CROSS,
+                        markerSize=18,
+                        thickness=2,
+                    )
+                    cv2.putText(
+                        frame,
+                        f"P{point.fish_id}",
+                        (center[0] + 6, max(18, center[1] - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
 
             if writer_size is not None and (frame.shape[1], frame.shape[0]) != writer_size:
                 frame = cv2.resize(frame, writer_size)

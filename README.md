@@ -79,13 +79,13 @@ If you omit `--weights`, the CLI will use `models/latest.pt` automatically.
 Download the NOAA images and annotations:
 
 ```powershell
-python scripts/download_noaa_puget_sound_nearshore_fish.py
+python scripts/download_dataset.py noaa
 ```
 
 Build the YOLO-ready dataset:
 
 ```powershell
-python scripts/organize_noaa_puget_sound_nearshore_fish.py
+python scripts/organize_dataset.py noaa
 ```
 
 Train with the NOAA-augmented manifest:

@@ -1,13 +1,10 @@
 # Data and large artifacts
-data/raw/**
-data/interim/**
-data/processed/**
-!data/raw/.gitkeep
-!data/interim/.gitkeep
-!data/processed/.gitkeep
-!data/interim/
-!data/interim/aau-zebrafish-reid/
-!data/interim/aau-zebrafish-reid/**
+data/**
+!data/
+!data/training/
+!data/training/.gitkeep
+!data/generative/
+!data/generative/.gitkeep
 
 # Kaggle credentials
 kaggle.json
@@ -16,7 +13,16 @@ kaggle.json
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
 
 # Training artifacts
 models/
 yolo*.pt
+
+# Generated outputs
+outputs/**
+!outputs/
+!outputs/.gitkeep
+
+# Editor
+.vscode/

@@ -9,6 +9,13 @@ from typing import Optional
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from src.liao_lab import (
+    compare_tracks_to_points,
+    discover_render_sources,
+    find_fish_coords_xlsx,
+    load_fish_coords_xlsx,
+    render_source_slug,
+)
 from src.pipeline import (
     describe_detector,
     train_detector,
@@ -16,7 +23,7 @@ from src.pipeline import (
     validate_detector,
     visualize_folder,
 )
-from src.pipeline.utils import repo_root
+from src.pipeline.utils import repo_root, write_json
 
 
 def _as_path(value: str) -> Path:
@@ -88,15 +95,34 @@ def _resolve_weights() -> Path:
 
 
 def _default_train_data() -> Path:
-    manifest = repo_root() / "configs" / "datasets" / "domain_general_fish.json"
-    if manifest.exists():
-        return manifest
+    canonical_training_root = (
+        repo_root() / "data" / "training" / "domain-general-fish-all-yolo"
+    )
+    if canonical_training_root.exists():
+        return canonical_training_root
+
+    manifests = [
+        repo_root() / "configs" / "datasets" / "domain_general_fish_all.json",
+        repo_root() / "configs" / "datasets" / "domain_general_fish_plus_noaa_psnf.json",
+        repo_root() / "configs" / "datasets" / "domain_general_fish.json",
+    ]
+    for manifest in manifests:
+        if manifest.exists():
+            return manifest
     return repo_root() / "data" / "interim" / "aau-zebrafish-reid"
 
 
 def _default_frames_dir(dataset_root: Path) -> Path:
+    generative_root = repo_root() / "data" / "generative" / "liao-lab-videos"
+    if generative_root.exists():
+        return generative_root
     if dataset_root.is_file():
         return repo_root() / "data" / "interim" / "aau-zebrafish-reid" / "vid1"
+    if (dataset_root / "images" / "train").exists():
+        train_images = dataset_root / "images" / "train"
+        nested = sorted([p for p in train_images.iterdir() if p.is_dir()])
+        if nested:
+            return nested[0]
     if (dataset_root / "vid1").exists():
         return dataset_root / "vid1"
     if dataset_root.exists():
@@ -104,6 +130,89 @@ def _default_frames_dir(dataset_root: Path) -> Path:
         if videos:
             return videos[0]
     return dataset_root
+
+
+def _default_train_output(default_dataset: Path) -> Path:
+    if default_dataset.is_file():
+        return repo_root() / "models" / f"{default_dataset.stem}.pt"
+    return repo_root() / "models" / "domain_general_fish.pt"
+
+
+def _load_coords_xlsx(path_value: str) -> dict[int, list]:
+    return load_fish_coords_xlsx(_as_path(path_value))
+
+
+def _visualize_batch(
+    batch_root: Path,
+    output_root: Path,
+    weights_path: Path,
+    write_tracks: bool,
+) -> list[dict[str, object]]:
+    sources = discover_render_sources(batch_root)
+    if not sources:
+        raise FileNotFoundError(
+            f"No video files or frame folders found under {batch_root}"
+        )
+
+    videos_dir = output_root / "videos"
+    tracks_dir = output_root / "tracks"
+    checks_dir = output_root / "coords_checks"
+    summary: list[dict[str, object]] = []
+
+    for source in sources:
+        slug = render_source_slug(source, batch_root)
+        output_video = videos_dir / f"{slug}.mp4"
+        coords_xlsx = find_fish_coords_xlsx(source) if source.is_dir() else None
+        coords_by_frame = load_fish_coords_xlsx(coords_xlsx) if coords_xlsx else None
+
+        print(f"Rendering {source} -> {output_video}")
+        visualize_folder(
+            source,
+            output_video,
+            weights_path,
+            coords_by_frame=coords_by_frame,
+        )
+
+        item: dict[str, object] = {
+            "source": str(source),
+            "video": str(output_video),
+        }
+        if coords_xlsx is not None:
+            item["coords_xlsx"] = str(coords_xlsx)
+
+        if write_tracks or coords_by_frame:
+            output_tracks = tracks_dir / f"{slug}.csv"
+            track_folder(source, output_tracks, weights_path)
+            item["tracks"] = str(output_tracks)
+
+            if coords_by_frame:
+                output_check = checks_dir / f"{slug}.json"
+                metrics = compare_tracks_to_points(
+                    output_tracks,
+                    coords_by_frame,
+                    output_path=output_check,
+                )
+                item["coords_check"] = str(output_check)
+                item["matched_points"] = metrics["matched_points"]
+                item["total_points"] = metrics["total_points"]
+                item["mean_distance_px"] = metrics["mean_distance_px"]
+                print(
+                    "Coords check "
+                    f"{source.name}: matched {metrics['matched_points']}/{metrics['total_points']} "
+                    f"points, mean error={metrics['mean_distance_px']}"
+                )
+
+        summary.append(item)
+
+    write_json(
+        output_root / "batch_summary.json",
+        {
+            "root": str(batch_root),
+            "weights": str(weights_path),
+            "sources": summary,
+        },
+    )
+    return summary
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -123,7 +232,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "output",
         help="Output weights file (.pt)",
         nargs="?",
-        default=str(repo_root() / "models" / "domain_general_fish.pt"),
+        default=str(_default_train_output(default_dataset)),
     )
     train_parser.add_argument(
         "--epochs",
@@ -202,6 +311,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional weights file to use instead of the default resolver",
         default="",
     )
+    visualize_parser.add_argument(
+        "--coords-xlsx",
+        help="Optional Fish coords.xlsx file to overlay reference points.",
+        default="",
+    )
+
+    visualize_batch_parser = subparsers.add_parser(
+        "visualize-batch",
+        help="Write annotated tracking videos for every renderable source under a folder",
+    )
+    visualize_batch_parser.add_argument(
+        "data",
+        help="Folder containing video files and/or frame folders.",
+    )
+    visualize_batch_parser.add_argument(
+        "output",
+        help="Output directory for rendered videos and optional sidecar files.",
+        nargs="?",
+        default=str(repo_root() / "outputs" / "batch_visualizations"),
+    )
+    visualize_batch_parser.add_argument(
+        "--weights",
+        help="Optional weights file to use instead of the default resolver",
+        default="",
+    )
+    visualize_batch_parser.add_argument(
+        "--write-tracks",
+        action="store_true",
+        help="Also write tracks CSVs for every source. Coords clips always get CSV + check JSON.",
+    )
 
     validate_parser = subparsers.add_parser("validate", help="Validate detector")
     validate_parser.add_argument(
@@ -274,8 +413,23 @@ def _run() -> int:
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
         weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
-        visualize_folder(data_root, output_path, weights_path)
+        coords_by_frame = _load_coords_xlsx(args.coords_xlsx) if args.coords_xlsx else None
+        visualize_folder(data_root, output_path, weights_path, coords_by_frame=coords_by_frame)
         print(f"Wrote video: {output_path}")
+        return 0
+
+    if args.command == "visualize-batch":
+        data_root = _as_path(args.data)
+        output_root = _as_path(args.output)
+        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
+        summary = _visualize_batch(
+            data_root,
+            output_root,
+            weights_path,
+            write_tracks=args.write_tracks,
+        )
+        print(f"Wrote batch outputs: {output_root}")
+        print(f"Processed sources: {len(summary)}")
         return 0
 
     if args.command == "validate":

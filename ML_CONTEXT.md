@@ -62,16 +62,11 @@ consistent IDs over time. No 3D or pose.
 - built from `configs/datasets/domain_general_fish.json`
 
 ## Key Scripts
-- `scripts/download_aau_zebrafish_reid.py`: download Kaggle dataset
-- `scripts/download_mit_river_herring.py`: download the LILA river herring image + metadata zips
-- `scripts/download_deep_vision_fish.py`: download the Deep Vision NMDC zip
-- `scripts/download_kakadu_fishai.py`: download the Kakadu Zenodo zip
-- `scripts/download_noaa_puget_sound_nearshore_fish.py`: download the NOAA image + annotation zips
-- `scripts/organize_aau_zebrafish_reid.py`: normalize into `data/interim/`
-- `scripts/organize_mit_river_herring.py`: extract and normalize the LILA COCO dataset into the repo layout
-- `scripts/organize_deep_vision_fish.py`: build `data/processed/deep-vision-fish-yolo/`
-- `scripts/organize_kakadu_fishai.py`: build `data/processed/kakadu-fishai-yolo/`
-- `scripts/organize_noaa_puget_sound_nearshore_fish.py`: build `data/processed/noaa-puget-sound-nearshore-fish-yolo/`
+- `scripts/download_dataset.py`: unified downloader for all downloadable datasets by dataset name
+- `scripts/organize_dataset.py`: unified organizer/builder for all normalized/training/generative datasets by dataset name
+- `src/dataset_constants.py`: canonical dataset names and aliases
+- `src/dataset_download.py`: shared download implementations
+- `src/dataset_organize.py`: shared organize/build implementations
 - `scripts/fish_cli.py`: CLI for train/run/visualize/validate
 - `test.py`: sanity test on a single frame; writes annotated PNG
 

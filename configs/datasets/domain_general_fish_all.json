@@ -1,0 +1,26 @@
+{
+  "name": "domain-general-fish-all-training",
+  "single_class_name": "fish",
+  "sources": [
+    {
+      "name": "aau-zebrafish-reid",
+      "path": "../../data/interim/aau-zebrafish-reid"
+    },
+    {
+      "name": "mit-sea-grant-river-herring",
+      "path": "../../data/interim/mit-sea-grant-river-herring"
+    },
+    {
+      "name": "deep-vision-fish",
+      "path": "../../data/processed/deep-vision-fish-yolo"
+    },
+    {
+      "name": "kakadu-fishai",
+      "path": "../../data/processed/kakadu-fishai-yolo"
+    },
+    {
+      "name": "noaa-puget-sound-nearshore-fish",
+      "path": "../../data/processed/noaa-puget-sound-nearshore-fish-yolo"
+    }
+  ]
+}
