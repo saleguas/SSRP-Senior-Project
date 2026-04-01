@@ -472,7 +472,15 @@ def _run() -> int:
     if args.command == "run":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".csv")
-        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
+        if args.weights:
+            weights_path = _as_path(args.weights)
+        else:
+            try:
+                weights_path = _resolve_weights()
+            except FileNotFoundError as e:
+                print("Error:", e)
+                print("Hint: run training first or set FISH_WEIGHTS.")
+                return 1
         track_folder(data_root, output_path, weights_path)
         print(f"Wrote tracks: {output_path}")
         return 0
@@ -480,7 +488,15 @@ def _run() -> int:
     if args.command == "visualize":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
-        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
+        if args.weights:
+            weights_path = _as_path(args.weights)
+        else:
+            try:
+                weights_path = _resolve_weights()
+            except FileNotFoundError as e:
+                print("Error:", e)
+                print("Hint: run training first or set FISH_WEIGHTS.")
+                return 1
         coords_by_frame = _load_coords_xlsx(args.coords_xlsx) if args.coords_xlsx else None
         visualize_folder(
             data_root,
@@ -496,7 +512,15 @@ def _run() -> int:
     if args.command == "visualize-batch":
         data_root = _as_path(args.data)
         output_root = _as_path(args.output)
-        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
+        if args.weights:
+            weights_path = _as_path(args.weights)
+        else:
+            try:
+                weights_path = _resolve_weights()
+            except FileNotFoundError as e:
+                print("Error:", e)
+                print("Hint: run training first or set FISH_WEIGHTS.")
+                return 1
         summary = _visualize_batch(
             data_root,
             output_root,
@@ -512,7 +536,15 @@ def _run() -> int:
     if args.command == "validate":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".json")
-        weights_path = _as_path(args.weights) if args.weights else _resolve_weights()
+        if args.weights:
+            weights_path = _as_path(args.weights)
+        else:
+            try:
+                weights_path = _resolve_weights()
+            except FileNotFoundError as e:
+                print("Error:", e)
+                print("Hint: run training first or set FISH_WEIGHTS.")
+                return 1
         validate_detector(data_root, weights_path, output_path)
         print(f"Wrote metrics: {output_path}")
         return 0
