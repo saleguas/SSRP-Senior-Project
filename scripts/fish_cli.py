@@ -472,6 +472,7 @@ def _run() -> int:
     if args.command == "run":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".csv")
+        print("Running tracking...")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -488,6 +489,7 @@ def _run() -> int:
     if args.command == "visualize":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
+        print("Generating visualization...")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -512,6 +514,7 @@ def _run() -> int:
     if args.command == "visualize-batch":
         data_root = _as_path(args.data)
         output_root = _as_path(args.output)
+        print("Processing batch visualization...")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -536,6 +539,7 @@ def _run() -> int:
     if args.command == "validate":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".json")
+        print("Validating model...")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
