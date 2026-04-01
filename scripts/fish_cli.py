@@ -260,7 +260,9 @@ def _visualize_batch(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Fish tracking pipeline")
+    parser = argparse.ArgumentParser(
+    description="Fish Tracking Interface - train, run tracking, visualize results, and validate models"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     default_dataset = _default_train_data()
@@ -318,7 +320,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Enable deterministic training. This is slower; leave off for normal runs.",
     )
 
-    run_parser = subparsers.add_parser("run", help="Run tracking")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run tracking on input data",
+        description="Runs the tracking pipeline on a video file or folder of frames."
+    )
     run_parser.add_argument(
         "data",
         help="Frames folder (PNG/JPG/JPEG images) or video file (.mp4/.avi/.mov/.mkv)",
@@ -336,7 +342,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     visualize_parser = subparsers.add_parser(
-        "visualize", help="Write annotated tracking video"
+        "visualize",
+        help="Generate visualization video",
+        description="Creates a video with tracking results overlaid on frames or video."
     )
     visualize_parser.add_argument(
         "data",
@@ -375,7 +383,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     visualize_batch_parser = subparsers.add_parser(
         "visualize-batch",
-        help="Write annotated tracking videos for every renderable source under a folder",
+        help="Run visualization on multiple inputs",
+        description="Processes all valid sources in a folder and generates visualization outputs."
     )
     visualize_batch_parser.add_argument(
         "data",
@@ -410,7 +419,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="For frame-folder inputs, stretch/compress playback to this many seconds.",
     )
 
-    validate_parser = subparsers.add_parser("validate", help="Validate detector")
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate model performance",
+        description="Evaluates the trained detector and outputs performance metrics."
+    )
     validate_parser.add_argument(
         "data",
         help="Normalized dataset folder, processed YOLO dataset root, or JSON dataset manifest",
@@ -429,7 +442,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
     )
 
-    info_parser = subparsers.add_parser("model-info", help="Show detector architecture")
+    info_parser = subparsers.add_parser(
+        "model-info",
+        help="Display model architecture",
+        description="Prints details about the model structure and configuration."
+    )
     info_parser.add_argument(
         "--model",
         default="yolov8n.pt",
@@ -471,6 +488,9 @@ def _run() -> int:
 
     if args.command == "run":
         data_root = _as_path(args.data)
+        if not data_root.exists():
+            print("Error - input path doesn't exist")
+            return 1
         output_path = _ensure_suffix(_as_path(args.output), ".csv")
         print("Running tracking...")
         if args.weights:
@@ -488,6 +508,9 @@ def _run() -> int:
 
     if args.command == "visualize":
         data_root = _as_path(args.data)
+        if not data_root.exists():
+            print("Error - input path doesn't exist")
+            return 1
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
         print("Generating visualization...")
         if args.weights:
@@ -513,6 +536,9 @@ def _run() -> int:
 
     if args.command == "visualize-batch":
         data_root = _as_path(args.data)
+        if not data_root.exists():
+            print("Error - input path doesn't exist")
+            return 1
         output_root = _as_path(args.output)
         print("Processing batch visualization...")
         if args.weights:
@@ -538,6 +564,9 @@ def _run() -> int:
 
     if args.command == "validate":
         data_root = _as_path(args.data)
+        if not data_root.exists():
+            print("Error - input path doesn't exist")
+            return 1
         output_path = _ensure_suffix(_as_path(args.output), ".json")
         print("Validating model...")
         if args.weights:
