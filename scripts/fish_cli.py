@@ -261,7 +261,12 @@ def _visualize_batch(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-    description="Fish Tracking Interface - train, run tracking, visualize results, and validate models"
+        description="Fish Tracking Interface - train, run tracking, visualize results, and validate models"
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="Fish CLI version 1.0"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -459,6 +464,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of detector classes to instantiate for the summary.",
     )
 
+    check_parser = subparsers.add_parser(
+        "check-path",
+        help="Check if a file or directory exists",
+        description="Validates whether a given path exists and shows its type."
+    )
+    check_parser.add_argument(
+        "path",
+        help="Path to check"
+    )
+
     return parser
 
 
@@ -586,9 +601,25 @@ def _run() -> int:
         info = describe_detector(args.model, classes=args.classes)
         print(json.dumps(info, indent=2))
         return 0
+    
+    if args.command == "check-path":
+        path = _as_path(args.path)
+
+        if path.exists():
+            print("Path exists: True")
+            if path.is_file():
+                print("Type: File")
+            elif path.is_dir():
+                print("Type: Directory")
+        else:
+            print("Path exists: False")
+
+        return 0
 
     parser.print_help()
     return 1
+
+    
 
 
 def main() -> None:
