@@ -268,7 +268,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="version",
         version="Fish CLI version 1.0"
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument(
+        "--list-datasets",
+        action="store_true",
+        help="List all datasets that are currently available"
+)
+    subparsers = parser.add_subparsers(dest="command")
 
     default_dataset = _default_train_data()
 
@@ -473,6 +478,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "path",
         help="Path to check"
     )
+    dataset_info_parser = subparsers.add_parser(
+        "dataset-info",
+        help="Show dataset details",
+        description="Displays information about a dataset from registry."
+    )
+    dataset_info_parser.add_argument(
+        "name",
+        help="Dataset name or alias"
+)
 
     return parser
 
@@ -481,6 +495,17 @@ def _run() -> int:
     parser = _build_parser()
     args = parser.parse_args()
 
+    if args.list_datasets:
+        from src.dataset_constants import DATASET_SPECS
+
+        print("\n=== AVAILABLE DATASETS ===\n")
+
+        for spec in DATASET_SPECS:
+            status = "downloadable" if spec.downloadable else "not downloadable"
+            print(f" - {spec.name} ({status})")
+
+        print()
+        return 0
     if args.command == "train":
         data_root = _as_path(args.data)
         output_path = _ensure_suffix(_as_path(args.output), ".pt")
@@ -507,7 +532,8 @@ def _run() -> int:
             print("Error - input path doesn't exist")
             return 1
         output_path = _ensure_suffix(_as_path(args.output), ".csv")
-        print("Running tracking...")
+        print("\n=== RUN TRACKING ===")
+        print("Running tracking...\n")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -527,7 +553,8 @@ def _run() -> int:
             print("Error - input path doesn't exist")
             return 1
         output_path = _ensure_suffix(_as_path(args.output), ".mp4")
-        print("Generating visualization...")
+        print("\n=== VISUALIZATION ===")
+        print("Generating visualization...\n")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -555,7 +582,8 @@ def _run() -> int:
             print("Error - input path doesn't exist")
             return 1
         output_root = _as_path(args.output)
-        print("Processing batch visualization...")
+        print("\n=== BATCH VISUALIZATION ===")
+        print("Processing batch visualization...\n")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -583,7 +611,8 @@ def _run() -> int:
             print("Error - input path doesn't exist")
             return 1
         output_path = _ensure_suffix(_as_path(args.output), ".json")
-        print("Validating model...")
+        print("\n=== VALIDATION ===")
+        print("Validating model...\n")
         if args.weights:
             weights_path = _as_path(args.weights)
         else:
@@ -615,9 +644,27 @@ def _run() -> int:
             print("Path exists: False")
 
         return 0
+    
+    if args.command == "dataset-info":
+
+        from src.dataset_constants import get_dataset_spec
+
+        spec = get_dataset_spec(args.name)
+
+        print("\n=== DATASET INFO ===")
+        print(f"Name: {spec.name}")
+        print(f"Role: {spec.role}")
+        print(f"Downloadable: {'yes' if spec.downloadable else 'no'}")
+
+        if spec.aliases:
+            print("Aliases:", ", ".join(spec.aliases))
+
+        print()
+        return 0
 
     parser.print_help()
     return 1
+
 
     
 
