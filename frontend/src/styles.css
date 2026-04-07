@@ -7,25 +7,29 @@
 * {
   box-sizing: border-box;
 }
+html, body {
+  height: 100%;
+}
 
 body {
   margin: 0;
-  background: #0f1115;
+  background: radial-gradient(circle at 20% 20%, #12345a, #0f2a44 40%, #0f1115 100%);
   color: #e8ecf1;
-}
-
-button,
-input {
-  font: inherit;
 }
 
 button {
   cursor: pointer;
-  border: 0;
   border-radius: 10px;
   padding: 10px 14px;
-  background: #2f6fed;
+  background: linear-gradient(135deg, #2f6fed, #4cc9f0);
   color: white;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  transform: scale(1.03);
+  box-shadow: 0 6px 18px rgba(76, 201, 240, 0.3);
 }
 
 button:disabled {
@@ -41,11 +45,17 @@ input {
   background: #161a22;
   color: #e8ecf1;
 }
+input:focus {
+  outline: none;
+  border: 1px solid #4cc9f0;
+  box-shadow: 0 0 8px rgba(76, 201, 240, 0.3);
+}
 
 .page {
   max-width: 980px;
   margin: 0 auto;
   padding: 24px;
+  min-height: 100vh;
 }
 
 .hero {
@@ -54,6 +64,18 @@ input {
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
+  position: relative;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #4cc9f0, transparent);
+  opacity: 0.5;
 }
 
 .hero h1 {
@@ -77,29 +99,36 @@ input {
   margin-bottom: 16px;
 }
 
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
+.tab {
+  background: rgba(27, 34, 48, 0.7);
+  color: #d9dfeb;
+  border: 1px solid #2a3b55;
+  transition: all 0.2s ease;
 }
 
-.tab {
-  background: #1b2230;
-  color: #d9dfeb;
+.tab:hover {
+  background: rgba(47, 111, 237, 0.2);
 }
 
 .tab.active {
-  background: #2f6fed;
+  background: linear-gradient(135deg, #2f6fed, #4cc9f0);
   color: white;
+  box-shadow: 0 4px 12px rgba(76, 201, 240, 0.3);
+  transform: scale(1.03);
 }
 
 .card {
-  background: #161a22;
-  border: 1px solid #242b38;
+  background: rgba(22, 26, 34, 0.7);
+  border: 1px solid #2a3b55;
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 18px;
+  backdrop-filter: blur(8px);
+  transition: transform 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
 }
 
 .card h2 {
@@ -129,8 +158,8 @@ input {
 }
 
 .output {
-  background: #161a22;
-  border: 1px solid #242b38;
+  background: #0c111b;
+  border: 1px solid #2a3b55;
   border-radius: 16px;
   padding: 18px;
   margin: 18px 0;

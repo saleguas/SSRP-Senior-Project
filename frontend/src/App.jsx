@@ -215,8 +215,7 @@ export default function App() {
     <div className="page">
       <header className="hero">
         <div>
-          <h1>Fish Tracking UI</h1>
-          <p>Minimal frontend for your existing fish_cli.py commands.</p>
+        <h1>🐟 Fish Tracking UI</h1>
         </div>
         <div className="status">API: {apiStatus}</div>
       </header>
