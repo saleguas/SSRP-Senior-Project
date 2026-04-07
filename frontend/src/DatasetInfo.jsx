@@ -54,6 +54,23 @@ export default function DatasetInfo() {
       />
 
         <p style={{ marginTop: "12px", color: "#a8b0bf" }}>
+
+        This project
+         focuses on 
+         building a modular pipeline for fish 
+        tracking using computer vision techniques. 
+  Datasets play a 
+  critical role in this process, as 
+  they provide the labeled data needed to train, evaluate, 
+  and validate 
+  detection and tracking models. 
+  By supporting multiple datasets, the system allows for 
+  experimentation 
+  across different environments, such as controlled lab settings 
+  and real-world underwater footage. 
+  This flexibility helps improve model robustness 
+  and ensures that tracking performance generalizes across 
+  varying conditions.
         Available datasets are listed below:
         </p>
 

@@ -132,7 +132,7 @@ export default function App() {
       ["checkPath", "Check Path"],
       ["datasetInfo", "Dataset Info"],
       ["train", "Training"],
-      ["run", "Run Tracking"],
+    
     ],
     []
   )
