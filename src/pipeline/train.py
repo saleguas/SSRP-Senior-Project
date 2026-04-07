@@ -19,6 +19,8 @@ from .utils import (
     write_json,
 )
 
+DEFAULT_BASE_MODEL = "yolo11s.pt"
+
 
 def _auto_epochs(train_count: int) -> int:
     if train_count < 1000:
@@ -85,7 +87,7 @@ def _resolve_model_reference(models_root: Path, model_name: str) -> str:
     return model_name
 
 
-def describe_detector(model_name: str = "yolov8n.pt", classes: int = 1) -> Dict[str, Any]:
+def describe_detector(model_name: str = DEFAULT_BASE_MODEL, classes: int = 1) -> Dict[str, Any]:
     models_root = ensure_dir(repo_root() / "models")
     configure_ultralytics(models_root)
 
@@ -119,7 +121,7 @@ def train_detector(
     workers: Optional[int] = None,
     batch: Optional[int] = None,
     deterministic: bool = False,
-    model_name: str = "yolov8n.pt",
+    model_name: str = DEFAULT_BASE_MODEL,
 ) -> Dict[str, str]:
     require_cuda()
     dataset = prepare_yolo_dataset(dataset_root)
@@ -137,7 +139,6 @@ def train_detector(
     train_batch = batch if batch is not None else -1
 
     base_weights = _resolve_model_reference(models_root, model_name)
-    _ensure_base_weights(models_root, "yolo11n.pt")
     model = YOLO(base_weights)
     if log_path is None:
         log_path = output_weights.with_suffix(".train.log")
