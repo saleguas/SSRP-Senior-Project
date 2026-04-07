@@ -67,6 +67,13 @@ class CheckPathRequest(BaseModel):
 class DatasetInfoRequest(BaseModel):
     name: str
 
+class TrainRequest(BaseModel):
+    data: str
+    output: Optional[str] = ""
+    model: str = "yolov8n.pt"
+    epochs: int = 0
+
+
 
 def run_cli(args: list[str]) -> dict:
     cmd = [sys.executable, str(CLI_PATH), *args]
@@ -165,3 +172,13 @@ def check_path(payload: CheckPathRequest) -> dict:
 @app.post("/dataset-info")
 def dataset_info(payload: DatasetInfoRequest) -> dict:
     return run_cli(["dataset-info", payload.name])
+
+@app.post("/train")
+def train(payload: TrainRequest) -> dict:
+    args = ["train", payload.data]
+    if payload.output:
+        args.append(payload.output)
+    args.extend(["--model", payload.model])
+    if payload.epochs:
+        args.extend(["--epochs", str(payload.epochs)])
+    return run_cli(args)

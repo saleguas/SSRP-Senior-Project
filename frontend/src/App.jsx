@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import DatasetInfo from "./DatasetInfo"
+import TrainingSession from "./TrainingSession"
 const API_BASE = "http://localhost:8000"
 
 const initialForms = {
@@ -129,7 +130,9 @@ export default function App() {
       ["validate", "Validate"],
       ["modelInfo", "Model Info"],
       ["checkPath", "Check Path"],
-      ["datasetInfo", "Dataset Info"]
+      ["datasetInfo", "Dataset Info"],
+      ["train", "Training"],
+      ["run", "Run Tracking"],
     ],
     []
   )
@@ -239,6 +242,8 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      {activeTab === "train" && <TrainingSession />}
 
       {activeTab === "run" && (
         <Section title="Run Tracking">
@@ -436,7 +441,7 @@ export default function App() {
 
       {activeTab === "datasetInfo" && <DatasetInfo />}
 
-      <Output result={result} />
+      {activeTab !== "train" && <Output result={result} />}
     </div>
   )
 }
