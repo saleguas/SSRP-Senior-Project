@@ -1,45 +1,120 @@
+import { useState } from "react"
+
 export default function DatasetInfo() {
-    return (
-      <div className="card">
-        <h2>🐟 Dataset Info</h2>
-  
-        <p>
-          This project supports multiple fish tracking datasets used for training and evaluation.
+  const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState(null)
+
+  const datasets = [
+    {
+      name: "aau-zebrafish-reid",
+      emoji: "🐠",
+      description: "Zebrafish tracking and re-identification dataset.",
+      type: "training",
+      aliases: ["aau", "zebrafish"],
+      source: "Academic",
+      size: "Medium"
+    },
+    {
+      name: "deep-vision-fish",
+      emoji: "🌊",
+      description: "General fish detection dataset.",
+      type: "detection",
+      aliases: [],
+      source: "Mixed",
+      size: "Large"
+    },
+    {
+      name: "noaa-puget-sound-nearshore-fish",
+      emoji: "📹",
+      description: "Real-world underwater NOAA dataset.",
+      type: "real-world",
+      aliases: ["noaa"],
+      source: "NOAA",
+      size: "Large"
+    }
+  ]
+
+  const filtered = datasets.filter((d) =>
+    d.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div className="card">
+      <h2>🐟 Dataset Info</h2>
+
+      <p>
+        Explore available datasets used in fish tracking and detection tasks.
+      </p>
+
+      {/* SEARCH BAR */}
+      <input
+        placeholder="Search dataset..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
+        <p style={{ marginTop: "12px", color: "#a8b0bf" }}>
+        Available datasets are listed below:
         </p>
-  
-        <div className="block">
-          <h3>Available Datasets</h3>
-          <ul className="dataset-list">
-            <li>
-              🐠 <strong>aau-zebrafish-reid</strong>
-              <p>Zebrafish dataset used for tracking and re-identification tasks.</p>
-            </li>
-            <li>
-              🌊 <strong>deep-vision-fish</strong>
-              <p>General dataset for fish detection across different environments.</p>
-            </li>
-            <li>
-              📹 <strong>noaa-puget-sound-nearshore-fish</strong>
-              <p>Real-world underwater footage collected from NOAA surveys.</p>
-            </li>
-          </ul>
-        </div>
-  
-        <div className="block">
-          <h3>How to Use</h3>
-          <ul>
-            <li>Use <strong>Run Tracking</strong> to process videos</li>
-            <li>Use <strong>Visualize</strong> to generate output videos</li>
-            <li>Use <strong>Dataset Info</strong> to query dataset details</li>
-          </ul>
-        </div>
-  
-        <div className="block">
-          <h3>Tip</h3>
-          <p>
-            You can enter dataset names or aliases (like "zebrafish") in the CLI or UI.
-          </p>
-        </div>
+
+      {/* DATASET LIST */}
+      <div className="dataset-grid">
+        {filtered.map((d) => (
+          <div
+            key={d.name}
+            className="dataset-card"
+            onClick={() => setSelected(d)}
+          >
+            <h3>{d.emoji} {d.name}</h3>
+            <p>{d.description}</p>
+
+            <div className="dataset-meta">
+              <span>Type: {d.type}</span>
+              <span>Size: {d.size}</span>
+            </div>
+
+            {d.aliases.length > 0 && (
+              <div className="dataset-aliases">
+                Aliases: {d.aliases.join(", ")}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-    )
-  }
+
+      {/* SELECTED DATASET DETAILS */}
+      {selected && (
+        <div className="dataset-detail">
+          <h3>📊 Selected Dataset</h3>
+
+          <p><strong>Name:</strong> {selected.name}</p>
+          <p><strong>Type:</strong> {selected.type}</p>
+          <p><strong>Source:</strong> {selected.source}</p>
+          <p><strong>Size:</strong> {selected.size}</p>
+
+          {selected.aliases.length > 0 && (
+            <p><strong>Aliases:</strong> {selected.aliases.join(", ")}</p>
+          )}
+        </div>
+      )}
+
+      {/* USAGE SECTION */}
+      <div className="block">
+        <h3>How to Use</h3>
+        <ul>
+          <li>Use Run Tracking to process videos</li>
+          <li>Use Visualize to generate outputs</li>
+          <li>Use CLI commands for advanced control</li>
+        </ul>
+      </div>
+
+      {/* TIP */}
+      <div className="block">
+        <h3>Tip</h3>
+        <p>
+          You can use dataset aliases instead of full names when running commands.
+        </p>
+      </div>
+    </div>
+  )
+}
