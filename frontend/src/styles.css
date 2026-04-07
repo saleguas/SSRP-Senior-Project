@@ -178,3 +178,27 @@ pre {
   padding: 12px;
   overflow: auto;
 }
+
+.dataset-list {
+  list-style: none;
+  padding: 0;
+}
+
+.dataset-list li {
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2a3b55;
+}
+
+.dataset-list li p {
+  margin: 4px 0 0;
+  color: #a8b0bf;
+  font-size: 14px;
+}
+
+h3 {
+  margin-bottom: 8px;
+  color: #4cc9f0;
+}
