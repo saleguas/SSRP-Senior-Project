@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-
+import DatasetInfo from "./DatasetInfo"
 const API_BASE = "http://localhost:8000"
 
 const initialForms = {
@@ -434,20 +434,7 @@ export default function App() {
         </Section>
       )}
 
-      {activeTab === "datasetInfo" && (
-        <Section title="Dataset Info">
-          <Field label="Dataset name">
-            <input
-              value={forms.datasetInfo.name}
-              onChange={(e) => updateForm("datasetInfo", "name", e.target.value)}
-              placeholder="dataset name or alias"
-            />
-          </Field>
-          <button onClick={() => handleAction("datasetInfo")} disabled={loading}>
-            {loading ? "Running..." : "Get Dataset Info"}
-          </button>
-        </Section>
-      )}
+      {activeTab === "datasetInfo" && <DatasetInfo />}
 
       <Output result={result} />
     </div>
