@@ -129,7 +129,6 @@ export default function App() {
       ["visualizeBatch", "Visualize Batch"],
       ["validate", "Validate"],
       ["modelInfo", "Model Info"],
-      ["checkPath", "Check Path"],
       ["datasetInfo", "Dataset Info"],
       ["train", "Training"],
     
@@ -377,6 +376,26 @@ export default function App() {
 
       {activeTab === "validate" && (
         <Section title="Validate">
+          
+          {/* 🔹 CHECK PATH (merged) */}
+          <Field label="Quick Path Check">
+            <input
+              value={forms.validate.checkPath || ""}
+              onChange={(e) =>
+                updateForm("validate", "checkPath", e.target.value)
+              }
+              placeholder="/absolute/path/to/check"
+            />
+          </Field>
+
+          <button
+            onClick={() => handleAction("checkPath")}
+            disabled={loading}
+          >
+            {loading ? "Running..." : "Check Path"}
+          </button>
+          <hr style={{ margin: "20px 0", opacity: 0.3 }} />
+          {/* 🔹 VALIDATE FIELDS */}
           <Field label="Data path">
             <input
               value={forms.validate.data}
@@ -384,6 +403,7 @@ export default function App() {
               placeholder="/absolute/path/to/dataset/or/manifest"
             />
           </Field>
+
           <Field label="Output JSON">
             <input
               value={forms.validate.output}
@@ -391,6 +411,7 @@ export default function App() {
               placeholder="/absolute/path/to/metrics.json"
             />
           </Field>
+
           <Field label="Weights path">
             <input
               value={forms.validate.weights}
@@ -398,9 +419,14 @@ export default function App() {
               placeholder="/absolute/path/to/weights.pt"
             />
           </Field>
-          <button onClick={() => handleAction("validate")} disabled={loading}>
+
+          <button
+            onClick={() => handleAction("validate")}
+            disabled={loading}
+          >
             {loading ? "Running..." : "Validate"}
           </button>
+          
         </Section>
       )}
 
