@@ -114,27 +114,26 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [datasetsResult, setDatasetsResult] = useState(null)
+  const [logs, setLogs] = useState([]);
   const [apiStatus, setApiStatus] = useState("Checking...")
+
 
   useEffect(() => {
     get("/health")
       .then(() => setApiStatus("Online"))
       .catch(() => setApiStatus("Offline"))
   }, [])
-
-  const tabs = useMemo(
-    () => [
-      ["run", "Run Tracking"],
-      ["visualize", "Visualize"],
-      ["visualizeBatch", "Visualize Batch"],
-      ["validate", "Validate"],
-      ["modelInfo", "Model Info"],
-      ["datasetInfo", "Dataset Info"],
-      ["train", "Training"],
-    
-    ],
-    []
-  )
+  
+  const tabs = useMemo(() => [
+    ["run", "🎯 Run Tracking"],
+    ["visualize", "🎥 Visualize"],
+    ["visualizeBatch", "📦 Batch"],
+    ["validate", "✅ Validate"],
+    ["modelInfo", "🧠 Model"],
+    ["datasetInfo", "📊 Dataset"],
+    ["train", "⚙️ Training"],
+    ["logs", "🖥 Logs"],
+  ], [])
 
   function updateForm(section, key, value) {
     setForms((prev) => ({
@@ -145,44 +144,51 @@ export default function App() {
       }
     }))
   }
+  const addLog = (message) => {
+    const time = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, `[${time}] ${message}`]);
+  };
 
   async function handleAction(action) {
     setLoading(true)
     setResult(null)
-
+  
+    addLog(`${action} started`);
+  
     try {
+      let res;
+  
       if (action === "run") {
-        setResult(await post("/run", forms.run))
+        res = await post("/run", forms.run)
       } else if (action === "visualize") {
-        setResult(
-          await post("/visualize", {
-            ...forms.visualize,
-            fps: Number(forms.visualize.fps),
-            duration_sec: Number(forms.visualize.duration_sec)
-          })
-        )
+        res = await post("/visualize", {
+          ...forms.visualize,
+          fps: Number(forms.visualize.fps),
+          duration_sec: Number(forms.visualize.duration_sec)
+        })
       } else if (action === "visualizeBatch") {
-        setResult(
-          await post("/visualize-batch", {
-            ...forms.visualizeBatch,
-            fps: Number(forms.visualizeBatch.fps),
-            duration_sec: Number(forms.visualizeBatch.duration_sec)
-          })
-        )
+        res = await post("/visualize-batch", {
+          ...forms.visualizeBatch,
+          fps: Number(forms.visualizeBatch.fps),
+          duration_sec: Number(forms.visualizeBatch.duration_sec)
+        })
       } else if (action === "validate") {
-        setResult(await post("/validate", forms.validate))
+        res = await post("/validate", forms.validate)
       } else if (action === "modelInfo") {
-        setResult(
-          await post("/model-info", {
-            ...forms.modelInfo,
-            classes: Number(forms.modelInfo.classes)
-          })
-        )
+        res = await post("/model-info", {
+          ...forms.modelInfo,
+          classes: Number(forms.modelInfo.classes)
+        })
       } else if (action === "checkPath") {
-        setResult(await post("/check-path", forms.checkPath))
+        res = await post("/check-path", forms.checkPath)
       } else if (action === "datasetInfo") {
-        setResult(await post("/dataset-info", forms.datasetInfo))
+        res = await post("/dataset-info", forms.datasetInfo)
       }
+  
+      setResult(res)
+  
+      addLog(`${action} completed successfully`);
+  
     } catch (e) {
       setResult({
         success: false,
@@ -190,6 +196,8 @@ export default function App() {
         stdout: "",
         stderr: e.message
       })
+  
+      addLog(`${action} failed: ${e.message}`);
     } finally {
       setLoading(false)
     }
@@ -215,6 +223,9 @@ export default function App() {
 
   return (
     <div className="page">
+      <div className="fish-bg">
+      🐟 🐠 🐡
+      </div>
       <header className="hero">
         <div>
         <h1>🐟 Fish Tracking UI</h1>
@@ -468,6 +479,28 @@ export default function App() {
       {activeTab === "datasetInfo" && <DatasetInfo />}
 
       {activeTab !== "train" && <Output result={result} />}
+
+      {activeTab === "logs" && (
+  <Section title="Activity Logs">
+    <div
+      style={{
+        background: "#000",
+        color: "#00ff88",
+        padding: "15px",
+        borderRadius: "10px",
+        fontFamily: "monospace",
+        maxHeight: "300px",
+        overflowY: "auto"
+      }}
+    >
+      {logs.length === 0 ? (
+        <p style={{ color: "#888" }}>No activity yet...</p>
+      ) : (
+        logs.map((log, i) => <div key={i}>{log}</div>)
+      )}
+    </div>
+  </Section>
+)}
     </div>
   )
 }

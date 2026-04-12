@@ -55,8 +55,10 @@ input:focus {
   max-width: 980px;
   margin: 0 auto;
   padding: 24px;
+  background: radial-gradient(circle at top, #0a2540, #02101f);
   min-height: 100vh;
 }
+
 
 .hero {
   display: flex;
@@ -111,21 +113,30 @@ input:focus {
 }
 
 .tab.active {
-  background: linear-gradient(135deg, #2f6fed, #4cc9f0);
+  background: #1e90ff;
+  box-shadow: 0 0 10px #1e90ff;
   color: white;
-  box-shadow: 0 4px 12px rgba(76, 201, 240, 0.3);
   transform: scale(1.03);
+}
+button {
+  transition: 0.2s;
+}
+
+button:hover {
+  transform: scale(1.05);
 }
 
 .card {
-  background: rgba(22, 26, 34, 0.7);
-  border: 1px solid #2a3b55;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   padding: 18px;
   margin-bottom: 18px;
-  backdrop-filter: blur(8px);
+  
   transition: transform 0.2s ease;
 }
+
 
 .card:hover {
   transform: translateY(-2px);
@@ -201,4 +212,56 @@ pre {
 h3 {
   margin-bottom: 8px;
   color: #4cc9f0;
+}
+
+.fish-bg {
+  position: fixed;
+  top: 30%;
+  left: -150px;
+  font-size: 50px;
+  opacity: 0.08;
+  animation: swim 25s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes swim {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(120vw);
+  }
+}
+.particles {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.particles span {
+  position: absolute;
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: rgba(173, 216, 230, 0.3);
+  border-radius: 50%;
+  animation: floatUp 10s linear infinite;
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-10vh);
+    opacity: 0;
+  }
 }
