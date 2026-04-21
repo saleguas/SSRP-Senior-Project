@@ -26,6 +26,8 @@ from src.pipeline import (
 )
 from src.pipeline.utils import repo_root, write_json
 
+DEFAULT_BASE_MODEL = "yolo11s.pt"
+
 
 def _as_path(value: str) -> Path:
     return Path(value).expanduser().resolve()
@@ -80,7 +82,15 @@ def _resolve_weights() -> Path:
     if runs_last:
         return runs_last
 
-    base_names = {"yolov8n.pt", "yolo11n.pt"}
+    base_names = {
+        "yolov8n.pt",
+        "yolov8s.pt",
+        "yolo11n.pt",
+        "yolo11s.pt",
+        "yolo11m.pt",
+        "yolo11l.pt",
+        "yolo11x.pt",
+    }
     pt_candidates = [
         p
         for p in models_root.glob("**/*.pt")
@@ -321,7 +331,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument(
         "--model",
-        default="yolov8n.pt",
+        default=DEFAULT_BASE_MODEL,
         help="Base detection model to fine-tune.",
     )
     train_parser.add_argument(
@@ -459,7 +469,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     info_parser.add_argument(
         "--model",
-        default="yolov8n.pt",
+        default=DEFAULT_BASE_MODEL,
         help="Model weights or YAML to inspect.",
     )
     info_parser.add_argument(

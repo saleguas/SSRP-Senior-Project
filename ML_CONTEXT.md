@@ -89,7 +89,7 @@ consistent IDs over time. No 3D or pose.
 - Supports PNG, JPG, and JPEG inputs
 
 `src/pipeline/train.py`
-- Trains YOLO (`yolov8n.pt` base)
+- Trains YOLO (`yolo11s.pt` base)
 - Auto epochs from dataset size
 - Saves per-epoch, best, last
 - Writes a tee'd train log when `--log` is provided

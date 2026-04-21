@@ -23,7 +23,7 @@ All training labels are collapsed into a single detection class: `fish`.
 
 ## Model
 
-- Detector: pretrained `yolov8n.pt`, fine-tuned as a one-class `fish` detector
+- Detector: pretrained `yolo11s.pt`, fine-tuned as a one-class `fish` detector
 - Tracker: BoT-SORT with the settings in `configs/trackers/botsort_fish.yaml`
 - Identity handling: online tracking only; there is no separate learned ReID model yet
 - Current weights: `models/domain_general_fish.pt`
