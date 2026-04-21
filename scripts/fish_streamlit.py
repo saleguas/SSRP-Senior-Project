@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "scripts" / "fish_cli.py"
 DEFAULT_BASE_MODEL = "yolo11s.pt"
 _BOOTSTRAP_ENV = "FISH_STREAMLIT_BOOTSTRAPPED"
+VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg", ".m4v", ".wmv")
 
 
 def _bootstrap_streamlit_run() -> None:
@@ -53,6 +54,27 @@ def _resolve_preview_path(value: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
         path = (REPO_ROOT / path).resolve()
+    return path
+
+
+def _find_direct_video_files(folder: Path) -> list[Path]:
+    if not folder.exists() or not folder.is_dir():
+        return []
+    return sorted(
+        [
+            path
+            for path in folder.iterdir()
+            if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+        ]
+    )
+
+
+def _resolve_workflow_input_path(value: str) -> Path:
+    path = _resolve_preview_path(value)
+    if path.is_dir():
+        direct_videos = _find_direct_video_files(path)
+        if len(direct_videos) == 1:
+            return direct_videos[0]
     return path
 
 
@@ -127,7 +149,7 @@ def _preview_file(path: Path) -> None:
 
 
 def _build_output_paths(video_value: str, output_dir_value: str) -> tuple[Path, Path, Path]:
-    video_path = _resolve_preview_path(video_value)
+    video_path = _resolve_workflow_input_path(video_value)
     output_dir = _resolve_preview_path(output_dir_value)
     stem = video_path.stem or "video"
     csv_path = output_dir / f"{stem}_tracks.csv"
@@ -140,7 +162,7 @@ def _run_video_workflow(
     weights_value: str,
     output_dir_value: str,
 ) -> dict[str, object]:
-    video_path = _resolve_preview_path(video_value)
+    video_path = _resolve_workflow_input_path(video_value)
     output_dir, csv_path, preview_video_path = _build_output_paths(
         video_value,
         output_dir_value,
@@ -209,7 +231,10 @@ def main() -> None:
     st.set_page_config(page_title="Fish CLI UI", layout="wide")
 
     st.title("Fish CLI UI")
-    st.caption("Input one video and generate both a tracks CSV and an annotated video.")
+    st.caption(
+        "Input one video file, a folder containing one video, or a folder of frames to "
+        "generate both a tracks CSV and an annotated video."
+    )
     st.info(
         "Leave the weights field blank to let `fish_cli.py` resolve the default model weights."
     )
@@ -219,9 +244,9 @@ def main() -> None:
     with workflow_tab:
         with st.form("video_workflow_form"):
             video_input = st.text_input(
-                "Input video",
+                "Input video or frames folder",
                 value="",
-                placeholder=r"C:\path\to\video.mp4",
+                placeholder=r"C:\path\to\video.mp4 or C:\path\to\video_folder",
             )
             weights_input = st.text_input("Weights file (optional)", value="")
             output_dir_input = st.text_input(
@@ -243,12 +268,12 @@ def main() -> None:
         if run_submit:
             if not video_input.strip():
                 st.session_state.pop("workflow_result", None)
-                st.error("Input video is required.")
+                st.error("Input video or frames folder is required.")
             else:
-                video_path = _resolve_preview_path(video_input)
+                video_path = _resolve_workflow_input_path(video_input)
                 if not video_path.exists():
                     st.session_state.pop("workflow_result", None)
-                    st.error(f"Input video was not found: {video_path}")
+                    st.error(f"Input path was not found: {video_path}")
                 else:
                     with st.spinner("Running tracking and visualization..."):
                         st.session_state["workflow_result"] = _run_video_workflow(

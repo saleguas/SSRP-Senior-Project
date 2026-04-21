@@ -39,6 +39,10 @@ def _is_video_file(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
 
 
+def _direct_video_files(folder: Path) -> List[Path]:
+    return sorted([path for path in folder.iterdir() if _is_video_file(path)])
+
+
 def _video_metadata(video_path: Path) -> Tuple[float | None, int | None]:
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
@@ -54,10 +58,15 @@ def _video_metadata(video_path: Path) -> Tuple[float | None, int | None]:
 
 
 def _missing_frames_error(images_dir: Path) -> FileNotFoundError:
+    videos = _direct_video_files(images_dir)
     subdirs = [p.name for p in images_dir.iterdir() if p.is_dir()]
-    hint = f" Available subfolders: {', '.join(subdirs)}" if subdirs else ""
+    hints: List[str] = []
+    if videos:
+        hints.append(f" Direct video files: {', '.join(path.name for path in videos)}.")
+    if subdirs:
+        hints.append(f" Available subfolders: {', '.join(subdirs)}.")
     return FileNotFoundError(
-        f"No supported image frames found in {images_dir}. Select a video folder.{hint}"
+        f"No supported image frames found in {images_dir}. Select a video folder.{''.join(hints)}"
     )
 
 
@@ -66,16 +75,25 @@ def _resolve_source(input_path: Path, default_fps: int = 30) -> TrackingSource:
 
     if source_path.is_dir():
         image_paths = _list_images(source_path)
-        if not image_paths:
-            raise _missing_frames_error(source_path)
-        return TrackingSource(
-            path=source_path,
-            kind="frames",
-            source_arg=[str(path) for path in image_paths],
-            frame_names=[path.name for path in image_paths],
-            total_frames=len(image_paths),
-            fps=float(default_fps),
-        )
+        if image_paths:
+            return TrackingSource(
+                path=source_path,
+                kind="frames",
+                source_arg=[str(path) for path in image_paths],
+                frame_names=[path.name for path in image_paths],
+                total_frames=len(image_paths),
+                fps=float(default_fps),
+            )
+
+        direct_videos = _direct_video_files(source_path)
+        if len(direct_videos) == 1:
+            return _resolve_source(direct_videos[0], default_fps=default_fps)
+        if len(direct_videos) > 1:
+            raise ValueError(
+                f"Multiple video files found in {source_path}. Pass one video file directly: "
+                f"{', '.join(path.name for path in direct_videos)}"
+            )
+        raise _missing_frames_error(source_path)
 
     if _is_video_file(source_path):
         fps, total_frames = _video_metadata(source_path)
