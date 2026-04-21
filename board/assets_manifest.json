@@ -1,0 +1,19 @@
+{
+  "figures": [
+    "figures/dataset_composition.png",
+    "figures/training_metrics.png",
+    "figures/model_tradeoff.png",
+    "figures/liao_escape_comparison.png",
+    "figures/liao_track_quality.png",
+    "figures/liao_trajectory_overlay.png",
+    "figures/domain_generalization_montage.png"
+  ],
+  "photos": {
+    "aau": "photos/aau_zebrafish_frame.jpg",
+    "liao_escape_success": "photos/liao_escape_success.jpg",
+    "liao_school_coords": "photos/liao_school_coords.jpg",
+    "liao_school_failure": "photos/liao_school_failure.jpg",
+    "mit": "photos/mit_river_herring_frame.jpg",
+    "noaa": "photos/noaa_frame.jpg"
+  }
+}
