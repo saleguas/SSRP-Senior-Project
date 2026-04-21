@@ -38,7 +38,7 @@ https://pytorch.org/get-started/locally/
 ### 4. Install the Python packages used by this repository
 
 ```powershell
-pip install ultralytics opencv-python pillow numpy pandas matplotlib fastapi "pydantic<3"
+pip install ultralytics opencv-python pillow numpy pandas matplotlib fastapi "pydantic<3" streamlit
 ```
 
 ### 5. Download the model weights
@@ -73,6 +73,23 @@ If you want to use a different weights file, pass it explicitly:
 ```powershell
 python scripts/fish_cli.py run path\to\new_video.mp4 outputs\new_video_tracks.csv --weights C:\path\to\model.pt
 ```
+
+### Optional: use the Streamlit UI
+
+Launch the UI with:
+
+```powershell
+python scripts/fish_streamlit.py
+```
+
+The UI is intentionally simple:
+
+- Required: input video path
+- Optional: weights file path
+- Defaulted: output folder
+- Outputs: `<video_stem>_tracks.csv` and `<video_stem>_visualized.mp4`
+
+![Fish CLI UI preview](frontend/preview.png)
 
 ## Datasets Used
 
